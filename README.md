@@ -1,15 +1,23 @@
-# ClaudeMonitor
+<p align="center">
+  <img src="docs/brand/logo-horizontal.png" width="460" alt="ClaudeMonitor">
+</p>
 
-[![Download for macOS (.dmg)](https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=flat-square&logo=apple&logoColor=white)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
-[![Latest release](https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=flat-square&label=latest&color=555)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
-[![Platform](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest"><img src="https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=flat-square&logo=apple&logoColor=white" alt="Download for macOS (.dmg)"></a>
+  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest"><img src="https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=flat-square&label=latest&color=555" alt="Latest release"></a>
+  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest"><img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple" alt="Platform"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License: MIT"></a>
+</p>
 
-Track usage for **multiple Claude accounts** right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet limits, and Extra Usage ($), per account, with quick switching.
+<p align="center">
+  Track usage for <b>multiple Claude accounts</b> right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet limits, and Extra Usage ($), per account, with quick switching.
+</p>
 
-**⬇️ [Download the latest .dmg](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)** — open it and drag ClaudeMonitor.app into Applications. Ad-hoc signed, so on first launch use right-click → Open.
+<p align="center">
+  <b>⬇️ <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">Download the latest .dmg</a></b> — drag ClaudeMonitor.app into Applications. Ad-hoc signed → first launch: right-click → Open.
+</p>
 
-UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
+> UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
 
 <p align="center">
   <img src="docs/preview-en.png" width="340" alt="ClaudeMonitor popover (English)">

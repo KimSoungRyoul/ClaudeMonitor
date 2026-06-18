@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="600" viewBox="0 0 2100 600" role="img" aria-label="ClaudeMonitor logo with wordmark">
+
+  <defs>
+    <linearGradient id="h-bg" x1="190" y1="130" x2="830" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F18155"/>
+      <stop offset="0.55" stop-color="#D9704D"/>
+      <stop offset="1" stop-color="#C95E42"/>
+    </linearGradient>
+    <linearGradient id="h-shine" x1="210" y1="130" x2="740" y2="840" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.34"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#3A1E13" stop-opacity="0.12"/>
+    </linearGradient>
+    <linearGradient id="h-text" x1="0" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F18155"/>
+      <stop offset="1" stop-color="#C95E42"/>
+    </linearGradient>
+    <filter id="h-shadow" x="-15%" y="-15%" width="130%" height="135%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#663020" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.16"/>
+    </filter>
+    <filter id="h-softshadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g transform="translate(74 70) scale(0.45)">
+  <g filter="url(#h-shadow)">
+    <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#h-bg)"/>
+    <rect x="116" y="116" width="792" height="792" rx="176" fill="url(#h-shine)"/>
+    <rect x="106" y="106" width="812" height="812" rx="186" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-opacity="0.26"/>
+  </g>
+  <g filter="url(#h-softshadow)">
+    <path d="M 218.82 641.29 A 312.00 312.00 0 0 1 805.18 641.29" fill="none" stroke="#FFF5E9" stroke-width="86" stroke-linecap="round" opacity="0.40"/>
+    <path d="M 218.82 641.29 A 312.00 312.00 0 0 1 501.11 436.19" fill="none" stroke="#FFFFFF" stroke-width="86" stroke-linecap="round" opacity="0.82"/>
+    <path d="M 291.33 658.84 A 238.00 238.00 0 0 1 732.67 658.84" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" opacity="0.42"/>
+    <line x1="340.85" y1="528.93" x2="295.29" y2="470.62" stroke="url(#h-bg)" stroke-width="12" stroke-linecap="round" opacity="0.72"/><line x1="512.00" y1="470.00" x2="512.00" y2="396.00" stroke="url(#h-bg)" stroke-width="12" stroke-linecap="round" opacity="0.72"/><line x1="683.15" y1="528.93" x2="728.71" y2="470.62" stroke="url(#h-bg)" stroke-width="12" stroke-linecap="round" opacity="0.72"/>
+  </g>
+  <g opacity="0.98" filter="url(#h-softshadow)">
+    <line x1="512.00" y1="320.00" x2="512.00" y2="194.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="536.00" y1="326.43" x2="599.00" y2="217.31" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="553.57" y1="344.00" x2="662.69" y2="281.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="560.00" y1="368.00" x2="686.00" y2="368.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="553.57" y1="392.00" x2="662.69" y2="455.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="536.00" y1="409.57" x2="599.00" y2="518.69" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="512.00" y1="416.00" x2="512.00" y2="542.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="488.00" y1="409.57" x2="425.00" y2="518.69" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="470.43" y1="392.00" x2="361.31" y2="455.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="464.00" y1="368.00" x2="338.00" y2="368.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="470.43" y1="344.00" x2="361.31" y2="281.00" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<line x1="488.00" y1="326.43" x2="425.00" y2="217.31" stroke="#FFFFFF" stroke-width="42" stroke-linecap="round"/>
+<circle cx="512" cy="368" r="18.9" fill="#FFFFFF"/>
+  </g>
+  <g filter="url(#h-softshadow)">
+    <line x1="512" y1="748" x2="641.29" y2="582.52" stroke="#1F2A3D" stroke-width="54" stroke-linecap="round"/>
+    <circle cx="512" cy="748" r="66" fill="#1F2A3D"/>
+    <circle cx="512" cy="748" r="34" fill="#F18155"/>
+    <circle cx="512" cy="748" r="31" fill="#D9704D" opacity="0.88"/>
+  </g></g>
+  <text x="590" y="356" font-family="Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, sans-serif" font-size="150" font-weight="800" letter-spacing="-5"><tspan fill="url(#h-text)">Claude</tspan><tspan fill="#1F2A3D">Monitor</tspan></text>
+  
+</svg>
