@@ -1,0 +1,17 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# 빌드 산출물
+dist/
+build/
+*.dmg
+*.app
+*.xcarchive
+
+# macOS
+.DS_Store
+
+# 로그/임시
+*.log

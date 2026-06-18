@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Assemble .app (smoke check)
+        run: |
+          ./scripts/package.sh 0.0.0-ci
+          test -d "dist/ClaudeMonitor.app"
+          test -f dist/ClaudeMonitor-v0.0.0-ci.dmg
+          echo "✅ app bundle & dmg produced"

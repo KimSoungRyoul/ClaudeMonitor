@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Package (build + DMG)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Packaging version $VERSION"
+          ./scripts/package.sh "$VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg \
+            --title "ClaudeMonitor $GITHUB_REF_NAME" \
+            --notes "$(cat <<'NOTES'
+ClaudeMonitor $GITHUB_REF_NAME — 멀티 계정 Claude 사용량 모니터 (macOS 메뉴바)
+
+### 설치
+1. 아래 \`ClaudeMonitor-*.dmg\` 다운로드
+2. 열어서 ClaudeMonitor.app 을 Applications 로 드래그
+3. ad-hoc 서명이라 첫 실행은 우클릭 → 열기 (Gatekeeper)
+
+### 사용
+메뉴바 게이지 아이콘 → \`…\` → Claude 계정 추가/로그인 → claude.ai 로그인.
+설정에서 English/한국어 전환 가능.
+NOTES
+)"
