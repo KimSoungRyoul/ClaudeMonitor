@@ -8,12 +8,28 @@
 import SwiftUI
 
 /// 번들된 브랜드 아이콘 (헤더 등에 사용)
+/// 주의: Bundle.module 은 손수 조립한 .app 에서 못 찾으면 fatalError 로 크래시한다.
+/// 따라서 Bundle.module 을 쓰지 않고 가능한 경로들을 안전하게 탐색하고, 못 찾으면 nil 을 반환한다.
 enum Brand {
     static let appIcon: NSImage? = {
-        if let url = Bundle.module.url(forResource: "AppIconImage", withExtension: "png") {
-            return NSImage(contentsOf: url)
+        // 1) 메인 번들 리소스 (릴리즈 .app: Contents/Resources/AppIconImage.png)
+        if let url = Bundle.main.url(forResource: "AppIconImage", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
         }
-        return nil
+        // 2) SwiftPM 리소스 번들 (디버그 raw 바이너리: <exe dir>/ClaudeMonitor_ClaudeMonitor.bundle/…)
+        let bundleName = "ClaudeMonitor_ClaudeMonitor.bundle"
+        var dirs: [URL] = []
+        if let r = Bundle.main.resourceURL { dirs.append(r) }
+        dirs.append(Bundle.main.bundleURL)
+        if let exe = Bundle.main.executableURL?.deletingLastPathComponent() { dirs.append(exe) }
+        for d in dirs {
+            let u = d.appendingPathComponent(bundleName).appendingPathComponent("AppIconImage.png")
+            if FileManager.default.fileExists(atPath: u.path), let img = NSImage(contentsOf: u) {
+                return img
+            }
+        }
+        return nil   // 못 찾으면 플레이스홀더 사용 (크래시하지 않음)
     }()
 }
 

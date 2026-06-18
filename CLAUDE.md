@@ -1,6 +1,6 @@
 # ClaudeMonitor — project notes
 
-macOS menu-bar app showing usage for multiple Claude accounts. UI is original; only the API calling convention is borrowed from the closed-source `Usage4Claude`.
+macOS menu-bar app showing usage for multiple Claude accounts. Inspired by the `Usage4Claude` menu-bar app (its app UX).
 
 - Target/binary/app: `ClaudeMonitor` · Bundle ID `com.kimsoungryoul.ClaudeMonitor` · macOS 14+ · SwiftPM executable (Swift 5 mode), SwiftUI + AppKit. No `.xcodeproj`.
 

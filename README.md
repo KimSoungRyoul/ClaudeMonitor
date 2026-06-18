@@ -17,7 +17,7 @@
   <b>⬇️ <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">Download the latest .dmg</a></b> — drag ClaudeMonitor.app into Applications. Ad-hoc signed → first launch: right-click → Open.
 </p>
 
-> UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
+> Inspired by [Usage4Claude](https://github.com/f-is-h/Usage4Claude) — thanks! 🙏
 
 <p align="center">
   <img src="docs/preview-en.png" width="340" alt="ClaudeMonitor popover (English)">
@@ -81,6 +81,10 @@ Sources/ClaudeMonitor/
   Views/                    Theme, Components (RingGauge/MiniRing/Bar), PopoverView,
                             UsageSections, SettingsView, WebLoginView, MenuBarRenderer
 ```
+
+## Acknowledgements
+
+Inspired by [**Usage4Claude**](https://github.com/f-is-h/Usage4Claude) — its menu-bar app UX inspired ClaudeMonitor's design. Thanks! 🙏
 
 ## License
 
