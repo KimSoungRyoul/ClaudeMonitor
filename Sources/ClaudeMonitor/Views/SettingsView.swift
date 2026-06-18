@@ -76,9 +76,11 @@ struct SettingsView: View {
             Spacer()
 
             HStack {
+                #if DEBUG
                 Toggle(L.s("데모 모드", "Demo mode"), isOn: Binding(
                     get: { state.demoMode },
                     set: { state.demoMode = $0; state.rebuildMenuBarImage() }))
+                #endif
                 Spacer()
                 Text(L.s("ClaudeMonitor v\(state.appVersion) · 멀티 계정 Claude 사용량 모니터",
                          "ClaudeMonitor v\(state.appVersion) · Multi-account Claude usage monitor"))

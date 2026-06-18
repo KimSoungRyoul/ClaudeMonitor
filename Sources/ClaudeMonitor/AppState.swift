@@ -80,10 +80,15 @@ final class AppState: ObservableObject {
         self.language = lang
         L.lang = lang.resolved
         loadAccounts()
+        // 데모 모드는 개발 빌드 전용. 릴리즈에서는 계정이 없으면 온보딩을 보여준다.
+        #if DEBUG
         if demo || accounts.isEmpty {
             self.demoMode = true
             if accounts.isEmpty { DemoData.installSampleAccounts(into: self) }
         }
+        #else
+        _ = demo
+        #endif
         if activeAccountId == nil { activeAccountId = accounts.first?.id }
         rebuildMenuBarImage()
     }

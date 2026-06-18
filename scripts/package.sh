@@ -12,7 +12,7 @@ cd "$ROOT"
 APP_NAME="ClaudeMonitor"
 BINARY="ClaudeMonitor"
 BUNDLE_ID="com.kimsoungryoul.ClaudeMonitor"
-VERSION="${1:-0.1.2}"
+VERSION="${1:-0.1.3}"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST_DIR="$ROOT/dist"

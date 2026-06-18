@@ -33,18 +33,22 @@ struct ClaudeMonitorApp: App {
 
 /// 앱 델리게이트: accessory 정책으로 Dock 아이콘 숨김.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// 검증 데모 창용 상태 (강한 참조 유지)
+    #if DEBUG
+    /// 개발 데모 창용 상태 (강한 참조 유지)
     private var demoState: AppState?
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        // 검증 모드: 실제 PopoverView 를 창으로 띄워 캡처 가능하게 한다.
+        #if DEBUG
+        // 개발 전용: 실제 PopoverView 를 창으로 띄워 캡처 가능하게 한다.
         if ProcessInfo.processInfo.environment["CTM_WINDOW_DEMO"] == "1" {
             let s = AppState(demo: true)
             demoState = s
             WindowManager.shared.attach(state: s)
             WindowManager.shared.openDemoPopover()
         }
+        #endif
     }
 }
 

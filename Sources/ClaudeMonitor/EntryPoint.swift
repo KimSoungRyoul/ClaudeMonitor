@@ -12,12 +12,15 @@ import AppKit
 @main
 enum EntryPoint {
     static func main() {
+        #if DEBUG
+        // 개발 전용: 팝오버를 PNG 로 렌더링하고 종료 (README 미리보기 생성용)
         if let out = ProcessInfo.processInfo.environment["CTM_PREVIEW_OUT"] {
             MainActor.assumeIsolated {
                 PreviewRenderer.render(to: out)
             }
             exit(0)
         }
+        #endif
         ClaudeMonitorApp.main()
     }
 }

@@ -14,7 +14,11 @@ swift build                       # debug
 
 The scripts assemble the `.app` by hand (Info.plist with `LSUIElement=YES`) and ad-hoc sign (`codesign -s -`). Accessory app (no Dock); confirm running with `lsappinfo info -only ApplicationType <pid>` → `UIElement`.
 
-## Verifying the UI (popover only opens on click)
+## Demo mode = DEBUG only
+
+Demo data, the "Demo mode" toggle, the demo badge, and the `CTM_PREVIEW_OUT` / `CTM_WINDOW_DEMO` render paths are all behind `#if DEBUG`. Release builds (`swift build -c release`, the shipped `.app`/DMG) contain none of it — a fresh install with no account shows the onboarding/login view instead. Verify with `strings .build/release/ClaudeMonitor | grep "Demo mode"` (must be empty).
+
+## Verifying the UI (popover only opens on click; DEBUG builds)
 
 - `CTM_PREVIEW_OUT=/p.png [CTM_LANG=en|ko] ./.build/debug/ClaudeMonitor` → static PNG of the popover, then exits. `ScrollView`/`Menu` don't render under `ImageRenderer`, so `PreviewRenderer` composes a scroll/menu-free copy. (Used to generate `docs/preview-*.png`.)
 - `CTM_WINDOW_DEMO=1 [CTM_LANG=en|ko] ./.build/debug/ClaudeMonitor` → opens the real `PopoverView` in a fit-to-content floating `NSWindow` (top-left) for `screencapture`. Trigger lives in `AppDelegate` because `MenuBarExtra` content `onAppear` only fires when the popover is clicked open.

@@ -18,17 +18,21 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.5)
-            ScrollView {
-                UsageSections()
-                    .padding(14)
-                    .background(
-                        GeometryReader { g in
-                            Color.clear.preference(key: BodyHeightKey.self, value: g.size.height)
-                        }
-                    )
+            if state.accounts.isEmpty && !state.demoMode {
+                OnboardingView()
+            } else {
+                ScrollView {
+                    UsageSections()
+                        .padding(14)
+                        .background(
+                            GeometryReader { g in
+                                Color.clear.preference(key: BodyHeightKey.self, value: g.size.height)
+                            }
+                        )
+                }
+                .frame(height: min(max(bodyHeight, 160), maxBodyHeight))
+                .onPreferenceChange(BodyHeightKey.self) { bodyHeight = $0 }
             }
-            .frame(height: min(max(bodyHeight, 160), maxBodyHeight))
-            .onPreferenceChange(BodyHeightKey.self) { bodyHeight = $0 }
             footer
         }
         .frame(width: 360)
@@ -69,10 +73,12 @@ struct PopoverView: View {
                 Menu {
                     Button(L.s("Claude 계정 추가/로그인…", "Add Claude account / Log in…")) { WindowManager.shared.openLogin() }
                     Button(L.s("설정…", "Settings…")) { WindowManager.shared.openSettings() }
+                    #if DEBUG
                     Divider()
                     Toggle(L.s("데모 모드", "Demo mode"), isOn: Binding(
                         get: { state.demoMode },
                         set: { state.demoMode = $0; state.rebuildMenuBarImage() }))
+                    #endif
                     Divider()
                     Button(L.s("종료", "Quit")) { NSApplication.shared.terminate(nil) }
                 } label: {
@@ -109,6 +115,9 @@ struct PopoverView: View {
             } else if state.demoMode {
                 Text(L.s("데모 데이터 — 메뉴 ‘…’에서 로그인", "Demo data — log in from the ‘…’ menu"))
                     .font(.system(size: 10)).foregroundStyle(.secondary)
+            } else if state.accounts.isEmpty {
+                Text(L.s("로그인이 필요합니다", "Log in to get started"))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
             } else {
                 Text(L.s("새로고침 필요", "Refresh needed")).font(.system(size: 10)).foregroundStyle(.secondary)
             }
@@ -130,6 +139,34 @@ struct PopoverView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(.thinMaterial)
+    }
+}
+
+/// 계정이 없을 때(릴리즈 첫 실행) 보여주는 온보딩
+struct OnboardingView: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            BrandIconView(size: 64)
+            Text("ClaudeMonitor").font(.system(size: 16, weight: .semibold))
+            Text(L.s("Claude 계정으로 로그인하면 5시간·7일 사용량이 메뉴바와 여기에 표시됩니다.",
+                     "Log in with your Claude account to see 5-hour / 7-day usage here and in the menu bar."))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                WindowManager.shared.openLogin()
+            } label: {
+                Text(L.s("Claude 로그인", "Log in to Claude"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 18).padding(.vertical, 7)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color(hex: 0xD97757))
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 34)
+        .frame(maxWidth: .infinity)
     }
 }
 
