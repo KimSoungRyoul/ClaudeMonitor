@@ -29,4 +29,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.dmg \
             --title "ClaudeMonitor $GITHUB_REF_NAME" \
-            --notes "멀티 계정 Claude 사용량 모니터 (macOS 메뉴바). DMG 를 열어 ClaudeMonitor.app 을 Applications 로 드래그하세요. ad-hoc 서명이라 첫 실행은 우클릭 → 열기. 설정에서 English / 한국어 전환 가능."
+            --notes "Multi-account Claude usage monitor for the macOS menu bar. Open the DMG and drag ClaudeMonitor.app into Applications. It is ad-hoc signed, so on first launch use right-click -> Open. Language (English / Korean) is selectable in Settings."

@@ -1,58 +1,72 @@
 # ClaudeMonitor
 
-여러 Claude 계정(조직)의 사용량을 macOS 메뉴바에서 한눈에 보는 앱입니다.
-5시간 / 7일 한도, Opus·Sonnet 한도, Extra Usage($)를 계정별로 표시하고 계정 간 전환을 지원합니다.
+Track usage for **multiple Claude accounts** right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet limits, and Extra Usage ($), per account, with quick switching.
 
-스크린샷의 `Usage4Claude` 앱을 참고하되, **API 호출 방식만 차용**하고 UI/디자인은 새로 설계했습니다.
+UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
 
-## 기능
+<p align="center">
+  <img src="docs/preview-en.png" width="340" alt="ClaudeMonitor popover (English)">
+  &nbsp;&nbsp;
+  <img src="docs/preview-ko.png" width="340" alt="ClaudeMonitor popover (Korean)">
+</p>
 
-- 📊 메뉴바에 활성 계정의 5h / 7d 사용률을 컬러로 표시
-- 🎯 팝오버: 큰 링 게이지 + 5시간/7일/Opus/Sonnet 카드 + Extra Usage($)
-- 👥 멀티 계정/멀티 조직: 하나의 세션 키로 접근 가능한 모든 조직을 자동 등록
-- 🔐 sessionKey 는 Keychain 에만 저장 (계정 메타데이터만 UserDefaults)
-- 🌐 내장 브라우저 로그인(WKWebView)으로 sessionKey 자동 추출, 수동 붙여넣기도 지원
-- 🔄 자동 새로고침 (1/3/5/10/30분), 수동 새로고침
-- 🧪 데모 모드: 계정이 없을 때 샘플 데이터로 UI 미리보기
+## Features
 
-## 사용하는 Claude.ai API
+- 📊 Menu-bar label with the active account's 5h / 7d usage in color
+- 🎯 Popover: dual ring gauges (5-hour + 7-day) with reset time and remaining time, plus Opus/Sonnet/Extra cards
+- 👥 Multi-account / multi-org: every organization reachable by one session key is registered automatically; switch with a tap
+- ⏱️ Remaining-time colors: 5h → red under 1 hour; 7d → red under 1 day, gold under 2 days, else green
+- 🌐 Built-in browser (WKWebView) login auto-extracts the session key; manual paste also supported
+- 🔐 Session key stored in the Keychain (only account metadata in UserDefaults)
+- 🔄 Auto-refresh (1/3/5/10/30 min) + manual refresh
+- 🆕 Update check against GitHub Releases — suggests a download when a newer version exists
+- 🌏 English / 한국어 (System / English / Korean) in Settings
+- 🧪 Demo mode with sample data when no account is configured
 
-| 엔드포인트 | 용도 |
-|---|---|
-| `GET /api/organizations` | 세션으로 접근 가능한 조직 목록 |
-| `GET /api/organizations/{uuid}/usage` | `five_hour`/`seven_day`/`seven_day_opus`/`seven_day_sonnet` (utilization, resets_at) |
-| `GET /api/organizations/{uuid}/overage_spend_limit` | Extra Usage(추가 결제 사용액) |
+## Install
 
-인증: `Cookie: sessionKey=sk-ant-...` + 브라우저 모사 헤더(`anthropic-client-platform`, `origin`, `referer`, `sec-fetch-*`)로 Cloudflare 우회.
+Download the DMG from the [latest release](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest), open it, and drag **ClaudeMonitor.app** into Applications. The app is ad-hoc signed, so on first launch use right-click → Open (Gatekeeper).
 
-## 빌드 & 설치
+Then click the menu-bar gauge icon → `…` → **Add Claude account / Log in** and sign in to claude.ai.
+
+## Build from source
 
 ```bash
-# 빌드 + .app 번들 + ad-hoc 서명 + /Applications 설치
+# Release build + .app bundle + ad-hoc sign + install to /Applications
 ./scripts/build_app.sh
 
-# 또는 라이브러리 빌드만
+# Or just compile
 swift build -c release
 ```
 
-설치 후 메뉴바에 게이지 아이콘이 나타납니다. 클릭 → `…` → **Claude 계정 추가/로그인** 에서 claude.ai 로그인.
+Requires macOS 14+ and a Swift 6 toolchain (Xcode 16).
 
-## UI 미리보기 렌더링 (검증용)
+## Unofficial claude.ai API
 
-```bash
-CTM_PREVIEW_OUT=/tmp/preview.png swift run -c release ClaudeMonitor
-```
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/organizations` | Organizations reachable by the session |
+| `GET /api/organizations/{uuid}/usage` | `five_hour` / `seven_day` / `seven_day_opus` / `seven_day_sonnet` (utilization, resets_at) |
+| `GET /api/organizations/{uuid}/overage_spend_limit` | Extra Usage (overage spend) |
 
-## 구조
+Auth: `Cookie: sessionKey=sk-ant-...` plus browser-mimicking headers (`anthropic-client-platform`, `origin`, `referer`, `sec-fetch-*`) to pass Cloudflare.
+
+## Project layout
 
 ```
 Sources/ClaudeMonitor/
-  EntryPoint.swift        진입점(프리뷰/앱 분기)
-  App.swift               MenuBarExtra 앱 + WindowManager
-  AppState.swift          전역 상태(계정/사용량/새로고침/메뉴바 이미지)
-  Models/Models.swift     API 응답 + 정규화 모델 + Account
-  Services/ClaudeAPI.swift  API 클라이언트(Cloudflare 우회 헤더)
-  Services/Keychain.swift   sessionKey 보관
-  Views/                  Theme, Components(RingGauge/Bar), PopoverView, AccountRow,
-                          SettingsView, WebLoginView, MenuBarRenderer
+  EntryPoint.swift          entry (preview vs app branch)
+  App.swift                 MenuBarExtra app + WindowManager
+  AppState.swift            global state (accounts/usage/refresh/menu-bar image/language/update check)
+  Localization.swift        AppLanguage + L.s("ko","en")
+  Models/Models.swift       API responses + normalized models + Account
+  Services/ClaudeAPI.swift  API client (Cloudflare-bypass headers)
+  Services/Keychain.swift   session key storage
+  Services/UpdateChecker.swift  GitHub releases/latest check
+  Views/                    Theme, Components (RingGauge/MiniRing/Bar), PopoverView,
+                            UsageSections, SettingsView, WebLoginView, MenuBarRenderer
 ```
+
+## License
+
+Personal project. No warranty. Uses an unofficial endpoint that may change at any time.

@@ -12,10 +12,11 @@ enum PreviewRenderer {
     @MainActor
     static func render(to path: String) {
         let state = AppState(demo: true)
-        // 활성 계정을 샘플 B(=8%/19%) 로 맞춰 스크린샷이 풍부하게 보이도록
-        if state.accounts.count > 1 {
-            state.activeAccountId = state.accounts[1].id
-        }
+        // 언어 강제 (CTM_LANG=en|ko)
+        if let lng = ProcessInfo.processInfo.environment["CTM_LANG"],
+           let al = AppLanguage(rawValue: lng) { state.language = al }
+        // 활성 계정을 5h+7d 둘 다 있는 첫 계정으로 (듀얼 링이 보이도록)
+        if let first = state.accounts.first { state.activeAccountId = first.id }
         // ScrollView/Menu 는 ImageRenderer 가 그리지 못하므로, 같은 구성요소를
         // 고정 VStack 으로 합성해 디자인을 캡처한다. (실제 앱에서는 PopoverView 사용)
         let view = VStack(spacing: 0) {
@@ -25,7 +26,7 @@ enum PreviewRenderer {
             Divider().opacity(0.5)
             HStack(spacing: 6) {
                 Circle().fill(Color.green).frame(width: 6, height: 6)
-                Text("데모 데이터 표시 중 — 메뉴 ‘…’ 에서 로그인")
+                Text(L.s("데모 데이터 — 메뉴 ‘…’에서 로그인", "Demo data — log in from the ‘…’ menu"))
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                 Spacer()
                 Text("ClaudeMonitor").font(.system(size: 9)).foregroundStyle(.secondary)
@@ -72,7 +73,7 @@ private struct PreviewHeader: View {
                     .font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 5) {
                     if let plan = state.activeAccount?.plan { PlanBadge(plan: plan) }
-                    Text("데모")
+                    Text(L.s("데모", "Demo"))
                         .font(.system(size: 9, weight: .semibold))
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Capsule().fill(Color.orange.opacity(0.2)))

@@ -21,10 +21,10 @@ enum DemoData {
     static func installSampleAccounts(into state: AppState) {
         // 실제 계정으로 오인되지 않도록 명백한 데모 이름 사용
         let accs = [
-            Account(id: ids[0], organizationId: "demo-a", organizationName: "데모 · 샘플 A", plan: .team),
-            Account(id: ids[1], organizationId: "demo-b", organizationName: "데모 · 샘플 B", plan: .max),
-            Account(id: ids[2], organizationId: "demo-c", organizationName: "데모 · 샘플 C", plan: .max),
-            Account(id: ids[3], organizationId: "demo-d", organizationName: "데모 · Enterprise", plan: .enterprise)
+            Account(id: ids[0], organizationId: "demo-a", organizationName: "Demo · A", plan: .team),
+            Account(id: ids[1], organizationId: "demo-b", organizationName: "Demo · B", plan: .max),
+            Account(id: ids[2], organizationId: "demo-c", organizationName: "Demo · C", plan: .max),
+            Account(id: ids[3], organizationId: "demo-d", organizationName: "Demo · Enterprise", plan: .enterprise)
         ]
         state.accounts = accs
     }
