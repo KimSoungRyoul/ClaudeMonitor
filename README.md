@@ -4,11 +4,11 @@ Track usage for **multiple Claude accounts** right from the macOS menu bar — 5
 
 <p align="center">
   <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
-    <img src="https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS (.dmg)">
+    <img src="https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=flat-square&logo=apple&logoColor=white" alt="Download for macOS (.dmg)">
   </a>
   &nbsp;
   <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
-    <img src="https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=for-the-badge&label=latest&color=555" alt="Latest release">
+    <img src="https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=flat-square&label=latest&color=555" alt="Latest release">
   </a>
 </p>
 
