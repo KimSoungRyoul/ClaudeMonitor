@@ -1,20 +1,13 @@
 # ClaudeMonitor
 
+[![Download for macOS (.dmg)](https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=flat-square&logo=apple&logoColor=white)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=flat-square&label=latest&color=555)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
+[![Platform](https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple)](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+
 Track usage for **multiple Claude accounts** right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet limits, and Extra Usage ($), per account, with quick switching.
 
-<p align="center">
-  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
-    <img src="https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=flat-square&logo=apple&logoColor=white" alt="Download for macOS (.dmg)">
-  </a>
-  &nbsp;
-  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
-    <img src="https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=flat-square&label=latest&color=555" alt="Latest release">
-  </a>
-</p>
-
-<p align="center">
-  <b><a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">⬇️ Download the latest .dmg</a></b> · macOS 14+ · ad-hoc signed (first launch: right-click → Open)
-</p>
+**⬇️ [Download the latest .dmg](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest)** — open it and drag ClaudeMonitor.app into Applications. Ad-hoc signed, so on first launch use right-click → Open.
 
 UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
 
@@ -83,4 +76,4 @@ Sources/ClaudeMonitor/
 
 ## License
 
-Personal project. No warranty. Uses an unofficial endpoint that may change at any time.
+[MIT](LICENSE) © KimSoungRyoul. Provided "as is", without warranty; uses an unofficial endpoint that may change at any time.
