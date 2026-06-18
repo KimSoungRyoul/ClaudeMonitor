@@ -7,6 +7,39 @@
 
 import SwiftUI
 
+/// 번들된 브랜드 아이콘 (헤더 등에 사용)
+enum Brand {
+    static let appIcon: NSImage? = {
+        if let url = Bundle.module.url(forResource: "AppIconImage", withExtension: "png") {
+            return NSImage(contentsOf: url)
+        }
+        return nil
+    }()
+}
+
+/// 브랜드 아이콘 뷰 — 번들 이미지 우선, 없으면 플레이스홀더(주황 그라데이션 + sparkle)
+struct BrandIconView: View {
+    var size: CGFloat = 30
+    var body: some View {
+        if let img = Brand.appIcon {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                    .fill(LinearGradient(colors: [Color(hex: 0xD97757), Color(hex: 0xC15F3C)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "sparkle")
+                    .font(.system(size: size * 0.46, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: size, height: size)
+        }
+    }
+}
+
 /// 큰 원형 게이지 (가운데에 % 표시)
 struct RingGauge: View {
     let percentage: Double

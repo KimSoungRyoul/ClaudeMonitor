@@ -10,6 +10,9 @@ let package = Package(
         .executableTarget(
             name: "ClaudeMonitor",
             path: "Sources/ClaudeMonitor",
+            resources: [
+                .process("Resources/AppIconImage.png")
+            ],
             swiftSettings: [
                 // Swift 5 언어 모드: 엄격한 동시성 검사로 인한 빌드 마찰을 피한다.
                 .swiftLanguageMode(.v5)

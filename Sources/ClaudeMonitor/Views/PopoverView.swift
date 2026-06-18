@@ -39,15 +39,7 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(LinearGradient(colors: [Color(hex: 0xD97757), Color(hex: 0xC15F3C)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 30, height: 30)
-                Image(systemName: "sparkle")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-            }
+            BrandIconView(size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.activeAccount?.displayName ?? "ClaudeMonitor")
                     .font(.system(size: 14, weight: .semibold))

@@ -10,7 +10,7 @@ cd "$ROOT"
 APP_NAME="ClaudeMonitor"
 BINARY="ClaudeMonitor"
 BUNDLE_ID="com.kimsoungryoul.ClaudeMonitor"
-VERSION="0.1.1"
+VERSION="0.1.2"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST_DIR="$ROOT/dist"
@@ -27,8 +27,9 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$BINARY" "$APP_DIR/Contents/MacOS/$BINARY"
 chmod +x "$APP_DIR/Contents/MacOS/$BINARY"
 
-# 앱 아이콘
+# 앱 아이콘 + SwiftPM 리소스 번들(Bundle.module: AppIconImage 등)
 cp "$ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp -R "$BUILD_DIR/"*.bundle "$APP_DIR/Contents/Resources/" 2>/dev/null || true
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
