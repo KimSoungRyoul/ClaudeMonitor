@@ -2,6 +2,20 @@
 
 Track usage for **multiple Claude accounts** right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet limits, and Extra Usage ($), per account, with quick switching.
 
+<p align="center">
+  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
+    <img src="https://img.shields.io/badge/Download%20for%20macOS-.dmg-D97757?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS (.dmg)">
+  </a>
+  &nbsp;
+  <a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">
+    <img src="https://img.shields.io/github/v/release/KimSoungRyoul/ClaudeMonitor?style=for-the-badge&label=latest&color=555" alt="Latest release">
+  </a>
+</p>
+
+<p align="center">
+  <b><a href="https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest">⬇️ Download the latest .dmg</a></b> · macOS 14+ · ad-hoc signed (first launch: right-click → Open)
+</p>
+
 UI/design is original; only the API calling convention is referenced from the `Usage4Claude` app.
 
 <p align="center">
