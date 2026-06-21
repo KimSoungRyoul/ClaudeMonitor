@@ -38,16 +38,29 @@ final class NotificationManager {
         guard isAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
             guard granted, !accounts.isEmpty else { return }
-            Task { @MainActor in self?.evaluate(accounts: accounts, threshold: threshold) }
+            // 권한이 막 승인됐으므로 재조회 없이 바로 평가.
+            Task { @MainActor in self?.evaluateAuthorized(accounts: accounts, threshold: threshold) }
         }
     }
 
     /// 계정 스냅샷들을 평가해 임계치를 새로 넘은 한도에 알림을 보낸다.
+    /// 권한이 실제로 "승인(provisional 포함)"된 경우에만 평가한다 — 그래야 전달 불가능한
+    /// 알림을 보내면서 alerted 에 기록해 다음 주기에도 재발화하지 못하는 문제가 생기지 않는다.
+    /// (실행/주기 새로고침 경로에서도 안전.)
     /// - Parameters:
     ///   - accounts: 현재 계정 스냅샷
     ///   - threshold: 경고 임계치(%) — 이 값 이상이면 알림
     func evaluate(accounts: [AccountSnapshot], threshold: Int) {
         guard isAvailable else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let ok = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+            guard ok else { return }
+            Task { @MainActor in self?.evaluateAuthorized(accounts: accounts, threshold: threshold) }
+        }
+    }
+
+    /// 권한이 확인된 뒤 메인 액터에서 실제 평가/발송.
+    private func evaluateAuthorized(accounts: [AccountSnapshot], threshold: Int) {
         let limit = Double(threshold)
         for acc in accounts {
             check(account: acc, kind: .fiveHour, pct: acc.fiveHourPct, threshold: limit)
