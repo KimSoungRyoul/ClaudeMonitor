@@ -75,11 +75,9 @@ final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(notificationsEnabled, forKey: Keys.notificationsEnabled)
             if notificationsEnabled {
-                NotificationManager.shared.requestAuthorization()
-                // 켜는 즉시 현재 사용량을 평가(이미 임계치를 넘은 한도가 있으면 바로 알림)
-                if !demoMode {
-                    NotificationManager.shared.evaluate(accounts: currentSnapshot().accounts, threshold: notifyThreshold)
-                }
+                // 권한 승인 후 현재 사용량을 즉시 평가(이미 임계치를 넘은 한도가 있으면 바로 알림)
+                NotificationManager.shared.enable(evaluateAccounts: demoMode ? [] : currentSnapshot().accounts,
+                                                  threshold: notifyThreshold)
             } else {
                 NotificationManager.shared.reset()
             }

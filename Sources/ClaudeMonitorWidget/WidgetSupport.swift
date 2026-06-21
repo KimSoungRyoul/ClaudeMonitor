@@ -52,7 +52,7 @@ enum WidgetFmt {
     static func remaining(_ date: Date?, now: Date = Date()) -> String {
         guard let date else { return "—" }
         let secs = date.timeIntervalSince(now)
-        guard secs > 0 else { return "soon" }
+        guard secs > 0 else { return WidgetL.s("곧 리셋", "soon") }
         let totalMin = Int((secs / 60).rounded(.up))
         let days = totalMin / (60 * 24)
         let hours = (totalMin % (60 * 24)) / 60

@@ -96,8 +96,9 @@ PLIST
         printf 'XPC!????' > "$APPEX/Contents/PkgInfo"
 
         # 위젯 엔타이틀먼트(app-groups) 작성 + 서명
+        # (codesign 은 확장자 .plist 를 요구하지 않으므로 mktemp 파일에 직접 쓴다)
         local WENT
-        WENT="$(mktemp -t cm-widget-ent).plist"
+        WENT="$(mktemp -t cm-widget-ent)"
         cat > "$WENT" <<ENT
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -116,7 +117,7 @@ ENT
 
     # --- 호스트 앱 엔타이틀먼트 + 서명 (안쪽 .appex 를 먼저 서명한 뒤 바깥을 서명) ---
     local HENT
-    HENT="$(mktemp -t cm-host-ent).plist"
+    HENT="$(mktemp -t cm-host-ent)"
     cat > "$HENT" <<ENT
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

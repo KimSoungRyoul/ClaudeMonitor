@@ -22,15 +22,24 @@ final class NotificationManager {
 
     /// 이미 알림을 보낸 한도 키 집합("<id>|5h", "<id>|7d"). 임계치 아래로 내려가면 해제.
     private var alerted: Set<String> = []
-    private var didRequestAuth = false
 
     private init() {}
 
-    /// 알림 권한 요청(설정에서 알림을 처음 켤 때 호출).
+    /// 알림 권한 요청(앱 시작 시 등). 권한 프롬프트는 OS 가 1회만 띄운다.
     func requestAuthorization() {
-        guard isAvailable, !didRequestAuth else { return }
-        didRequestAuth = true
+        guard isAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    /// 설정에서 알림을 켤 때 호출. 권한이 "승인된 뒤"에만 즉시 평가한다.
+    /// (권한이 아직 .notDetermined 인데 바로 evaluate 하면 알림이 드롭되면서도
+    ///  alerted 에 기록되어 다음 주기에도 재발화하지 않는 문제를 막는다.)
+    func enable(evaluateAccounts accounts: [AccountSnapshot], threshold: Int) {
+        guard isAvailable else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            guard granted, !accounts.isEmpty else { return }
+            Task { @MainActor in self?.evaluate(accounts: accounts, threshold: threshold) }
+        }
     }
 
     /// 계정 스냅샷들을 평가해 임계치를 새로 넘은 한도에 알림을 보낸다.
