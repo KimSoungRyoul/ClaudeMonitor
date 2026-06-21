@@ -41,6 +41,12 @@ extension Color {
     }
 }
 
+/// 위젯용 경량 로컬라이제이션(앱 타깃의 L 에 접근할 수 없으므로 시스템 언어로 추정).
+enum WidgetL {
+    static var isKO: Bool { (Locale.preferredLanguages.first ?? "en").hasPrefix("ko") }
+    static func s(_ ko: String, _ en: String) -> String { isKO ? ko : en }
+}
+
 enum WidgetFmt {
     /// 남은 시간 컴팩트: "2h 30m" / "3d 4h" / "소진"
     static func remaining(_ date: Date?, now: Date = Date()) -> String {

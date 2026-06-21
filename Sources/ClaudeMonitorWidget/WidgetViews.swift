@@ -71,7 +71,7 @@ struct WidgetEmptyView: View {
                 .foregroundStyle(WidgetTheme.brand)
             Text("ClaudeMonitor")
                 .font(.system(size: 12, weight: .semibold))
-            Text("Log in to see usage")
+            Text(WidgetL.s("로그인하면 사용량이 표시됩니다", "Log in to see usage"))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -123,7 +123,7 @@ struct SmallWidgetView: View {
                        caption: "extra", diameter: 58)
                 .frame(maxWidth: .infinity)
         } else {
-            Text("No data").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(WidgetL.s("데이터 없음", "No data")).font(.system(size: 11)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -214,7 +214,7 @@ struct LargeWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Circle().fill(WidgetTheme.brand).frame(width: 8, height: 8)
-                Text("Claude usage").font(.system(size: 13, weight: .semibold))
+                Text(WidgetL.s("Claude 사용량", "Claude usage")).font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text(snapshot.generatedAt, style: .time)
                     .font(.system(size: 9)).foregroundStyle(.tertiary)

@@ -81,7 +81,7 @@ struct ClaudeMonitorWidget: Widget {
             ClaudeMonitorWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Claude Usage")
-        .description("Claude 5-hour / 7-day usage per account.")
+        .description(WidgetL.s("계정별 Claude 5시간·7일 사용량.", "Claude 5-hour / 7-day usage per account."))
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

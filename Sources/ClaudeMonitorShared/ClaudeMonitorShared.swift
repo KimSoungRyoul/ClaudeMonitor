@@ -116,16 +116,9 @@ public enum SnapshotStore {
         return base.appendingPathComponent(SharedConstants.appSupportDirName, isDirectory: true)
     }
 
-    /// 쓰기 대상 후보들(존재하는 곳 모두에 기록). App Group 우선.
-    static var writeDirs: [URL] {
-        var dirs: [URL] = []
-        if let g = appGroupContainerURL { dirs.append(g) }
-        if let s = appSupportDirURL { dirs.append(s) }
-        return dirs
-    }
-
-    /// 읽기 우선순위: App Group → Application Support.
-    static var readDirs: [URL] {
+    /// 공유 디렉터리 우선순위: App Group → Application Support.
+    /// 쓰기는 존재하는 모든 곳에, 읽기는 앞에서부터 처음 성공한 곳을 쓴다.
+    static var sharedDirs: [URL] {
         var dirs: [URL] = []
         if let g = appGroupContainerURL { dirs.append(g) }
         if let s = appSupportDirURL { dirs.append(s) }
@@ -141,7 +134,7 @@ public enum SnapshotStore {
     public static func save(_ snapshot: UsageSnapshot) -> Bool {
         guard let data = try? encoder.encode(snapshot) else { return false }
         var wroteAny = false
-        for dir in writeDirs {
+        for dir in sharedDirs {
             ensureDir(dir)
             let url = dir.appendingPathComponent(SharedConstants.snapshotFileName)
             if (try? data.write(to: url, options: .atomic)) != nil { wroteAny = true }
@@ -151,7 +144,7 @@ public enum SnapshotStore {
 
     /// 우선순위에 따라 스냅샷을 읽는다.
     public static func load() -> UsageSnapshot? {
-        for dir in readDirs {
+        for dir in sharedDirs {
             let url = dir.appendingPathComponent(SharedConstants.snapshotFileName)
             if let data = try? Data(contentsOf: url),
                let snapshot = try? decoder.decode(UsageSnapshot.self, from: data) {
@@ -163,7 +156,7 @@ public enum SnapshotStore {
 
     /// 저장된 스냅샷을 모두 삭제(로그아웃/계정 제거 시).
     public static func clear() {
-        for dir in writeDirs {
+        for dir in sharedDirs {
             let url = dir.appendingPathComponent(SharedConstants.snapshotFileName)
             try? FileManager.default.removeItem(at: url)
         }

@@ -74,8 +74,15 @@ final class AppState: ObservableObject {
     @Published var notificationsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(notificationsEnabled, forKey: Keys.notificationsEnabled)
-            if notificationsEnabled { NotificationManager.shared.requestAuthorization() }
-            else { NotificationManager.shared.reset() }
+            if notificationsEnabled {
+                NotificationManager.shared.requestAuthorization()
+                // 켜는 즉시 현재 사용량을 평가(이미 임계치를 넘은 한도가 있으면 바로 알림)
+                if !demoMode {
+                    NotificationManager.shared.evaluate(accounts: currentSnapshot().accounts, threshold: notifyThreshold)
+                }
+            } else {
+                NotificationManager.shared.reset()
+            }
         }
     }
 
@@ -247,7 +254,9 @@ final class AppState: ObservableObject {
         saveAccounts()
         rebuildMenuBarImage()
         loadActiveHistory()
-        publishSnapshot()
+        // 활성 계정 전환은 로컬 변경이므로 스냅샷만 갱신하고 위젯 리로드는 생략한다
+        // (WidgetCenter.reloadTimelines 는 OS 가 rate-limit 하므로 잦은 호출을 피한다).
+        publishSnapshot(reloadWidget: false)
     }
 
     // MARK: - 새로고침
@@ -346,10 +355,11 @@ final class AppState: ObservableObject {
     }
 
     /// 스냅샷 저장 → 위젯 리로드, 그리고 (실데이터일 때) 히스토리 적재 + 임계치 알림 평가.
-    func publishSnapshot() {
+    /// - Parameter reloadWidget: 위젯 타임라인을 리로드할지(로컬 변경만일 때는 false 로 생략).
+    func publishSnapshot(reloadWidget: Bool = true) {
         let snapshot = currentSnapshot()
         SnapshotStore.save(snapshot)
-        WidgetBridge.reload()
+        if reloadWidget { WidgetBridge.reload() }
 
         // 히스토리/알림은 실제 데이터에 대해서만 (데모 데이터로 오염시키지 않음)
         guard !demoMode else { return }
