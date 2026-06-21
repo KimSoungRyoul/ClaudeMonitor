@@ -11,8 +11,8 @@ import SwiftUI
 enum MenuBarRenderer {
     /// 활성 계정의 5h / 7d 사용률을 작은 컬러 라벨 이미지로 만든다.
     @MainActor
-    static func render(account: Account?, usage: AccountUsage?) -> NSImage {
-        let view = MenuBarLabel(account: account, usage: usage)
+    static func render(account: Account?, usage: AccountUsage?, mode: MenuBarMode = .both) -> NSImage {
+        let view = MenuBarLabel(account: account, usage: usage, mode: mode)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2.0
         guard let img = renderer.nsImage else { return fallback() }
@@ -30,6 +30,10 @@ enum MenuBarRenderer {
 private struct MenuBarLabel: View {
     let account: Account?
     let usage: AccountUsage?
+    var mode: MenuBarMode = .both
+
+    private var showFive: Bool { mode == .both || mode == .fiveHour }
+    private var showSeven: Bool { mode == .both || mode == .sevenDay }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -37,21 +41,23 @@ private struct MenuBarLabel: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
 
-            if let five = usage?.fiveHour {
-                segment(tag: "5h", pct: five.percentage, color: Theme.fiveHourColor(five.percentage))
-            }
-            if let seven = usage?.sevenDay {
-                segment(tag: "7d", pct: seven.percentage, color: Theme.sevenDayColor(seven.percentage))
-            }
-            if usage?.fiveHour == nil, usage?.sevenDay == nil, let extra = usage?.extra, extra.enabled {
-                Text(extra.compactUsed)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.extraColor)
-            }
-            if usage == nil {
-                Text("Claude")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+            if mode != .iconOnly {
+                if showFive, let five = usage?.fiveHour {
+                    segment(tag: "5h", pct: five.percentage, color: Theme.fiveHourColor(five.percentage))
+                }
+                if showSeven, let seven = usage?.sevenDay {
+                    segment(tag: "7d", pct: seven.percentage, color: Theme.sevenDayColor(seven.percentage))
+                }
+                if usage?.fiveHour == nil, usage?.sevenDay == nil, let extra = usage?.extra, extra.enabled {
+                    Text(extra.compactUsed)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.extraColor)
+                }
+                if usage == nil {
+                    Text("Claude")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.horizontal, 2)

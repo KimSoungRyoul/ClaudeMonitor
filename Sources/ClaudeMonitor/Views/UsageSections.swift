@@ -14,6 +14,9 @@ struct UsageSections: View {
     var body: some View {
         VStack(spacing: 14) {
             heroSection
+            if state.activeHistory.count >= 2 {
+                SparklineView(points: state.activeHistory)
+            }
             limitsSection
             accountsSection
         }

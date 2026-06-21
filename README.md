@@ -27,8 +27,12 @@
 
 ## Features
 
-- 📊 Menu-bar label with the active account's 5h / 7d usage in color
+- 📊 Menu-bar label with the active account's 5h / 7d usage in color — choose what it shows (5h+7d / 5h / 7d / icon only)
+- 🧩 **macOS widgets** (WidgetKit): Small / Medium / Large "Claude Usage" widgets for the desktop & Notification Center, per account
 - 🎯 Popover: dual ring gauges (5-hour + 7-day) with reset time and remaining time, plus Opus/Sonnet/Extra cards
+- 📈 **Usage-trend sparkline** in the popover (recent 5h / 7d history, kept locally)
+- 🔔 **Threshold alerts**: a notification when 5h/7d usage first crosses a configurable threshold (70/80/90/95%)
+- 🚀 **Launch at login** toggle (SMAppService)
 - 👥 Multi-account / multi-org: every organization reachable by one session key is registered automatically; switch with a tap
 - ⏱️ Remaining-time colors: 5h → red under 1 hour; 7d → red under 1 day, gold under 2 days, else green
 - 🌐 Built-in browser (WKWebView) login auto-extracts the session key; manual paste also supported
@@ -36,13 +40,21 @@
 - 🔄 Auto-refresh (1/3/5/10/30 min) + manual refresh
 - 🆕 Update check against GitHub Releases — suggests a download when a newer version exists
 - 🌏 English / 한국어 (System / English / Korean) in Settings
-- 🧪 Demo mode with sample data when no account is configured
+- 🧪 Demo mode with sample data when no account is configured (DEBUG builds only)
 
 ## Install
 
 Download the DMG from the [latest release](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest), open it, and drag **ClaudeMonitor.app** into Applications. The app is ad-hoc signed, so on first launch use right-click → Open (Gatekeeper).
 
 Then click the menu-bar gauge icon → `…` → **Add Claude account / Log in** and sign in to claude.ai.
+
+## Widgets
+
+ClaudeMonitor ships a WidgetKit extension (**Claude Usage**) bundled inside the app. After launching the app once, open the widget gallery (right-click the desktop → *Edit Widgets*, or the bottom of Notification Center) and add **Claude Usage** in Small / Medium / Large.
+
+The app shares a usage snapshot with the widget through an App Group container (`group.com.kimsoungryoul.ClaudeMonitor`), refreshed on every poll.
+
+> ℹ️ **Signing note.** The App Group is granted only to a *validly signed* app. The default `.dmg` is ad-hoc signed, so the menu-bar app works everywhere, but the widget shows live data only when the app is signed with a Developer ID (or your own team) that carries the `application-groups` entitlement. Build with a real identity via `CODESIGN_IDENTITY="Developer ID Application: …" ./scripts/build_app.sh`.
 
 ## Build from source
 
@@ -69,16 +81,27 @@ Auth: `Cookie: sessionKey=sk-ant-...` plus browser-mimicking headers (`anthropic
 ## Project layout
 
 ```
+Sources/ClaudeMonitorShared/    shared, pure-Foundation layer used by app + widget
+  ClaudeMonitorShared.swift      UsageSnapshot/AccountSnapshot, SnapshotStore (App Group + App Support),
+                                 UsageHistoryStore (sparkline), SharedConstants (app-group id, widget kind)
+Sources/ClaudeMonitorWidget/     WidgetKit extension (assembled into .app/Contents/PlugIns by build_app.sh)
+  ClaudeMonitorWidget.swift      WidgetBundle (@main) + TimelineProvider reading the snapshot
+  WidgetViews.swift              Small / Medium / Large views + rings
+  WidgetSupport.swift            color thresholds + compact time format
 Sources/ClaudeMonitor/
   EntryPoint.swift          entry (preview vs app branch)
   App.swift                 MenuBarExtra app + WindowManager
   AppState.swift            global state (accounts/usage/refresh/menu-bar image/language/update check)
+                            + publishSnapshot() → SnapshotStore + WidgetCenter reload + history + alerts
   Localization.swift        AppLanguage + L.s("ko","en")
   Models/Models.swift       API responses + normalized models + Account
   Services/ClaudeAPI.swift  API client (Cloudflare-bypass headers)
   Services/Keychain.swift   session key storage
   Services/UpdateChecker.swift  GitHub releases/latest check
-  Views/                    Theme, Components (RingGauge/MiniRing/Bar), PopoverView,
+  Services/LoginItem.swift  launch-at-login (SMAppService)
+  Services/NotificationManager.swift  usage threshold alerts (UNUserNotificationCenter)
+  Services/WidgetBridge.swift  WidgetCenter reload trigger
+  Views/                    Theme, Components (RingGauge/MiniRing/Bar), PopoverView, Sparkline,
                             UsageSections, SettingsView, WebLoginView, MenuBarRenderer
 ```
 

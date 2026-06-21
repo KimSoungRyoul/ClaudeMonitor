@@ -25,7 +25,19 @@ Demo data, the "Demo mode" toggle, the demo badge, and the `CTM_PREVIEW_OUT` / `
 
 ## Architecture
 
-`AppState` (@MainActor) fetches per-account usage via the `ClaudeAPI` actor in parallel, stores `usage[accountId]`, and calls `rebuildMenuBarImage()`. Files: `App.swift` (MenuBarExtra + AppDelegate + WindowManager), `AppState`, `Localization` (`L.s("ko","en")`), `Models`, `Services/{ClaudeAPI,Keychain,UpdateChecker}`, `DemoData`, `PreviewRenderer`, `Views/{Theme,Components,UsageSections,PopoverView,MenuBarRenderer,SettingsView,WebLoginView}`.
+`AppState` (@MainActor) fetches per-account usage via the `ClaudeAPI` actor in parallel, stores `usage[accountId]`, and calls `rebuildMenuBarImage()`. After each refresh it also calls `publishSnapshot()` → writes a `UsageSnapshot` via `SnapshotStore`, reloads the widget (`WidgetBridge`/`WidgetCenter`), appends to `UsageHistoryStore`, and evaluates threshold alerts (`NotificationManager`). Files: `App.swift` (MenuBarExtra + AppDelegate + WindowManager), `AppState`, `Localization` (`L.s("ko","en")`), `Models`, `Services/{ClaudeAPI,Keychain,UpdateChecker,LoginItem,NotificationManager,WidgetBridge}`, `DemoData`, `PreviewRenderer`, `Views/{Theme,Components,UsageSections,PopoverView,Sparkline,MenuBarRenderer,SettingsView,WebLoginView}`.
+
+### Three SwiftPM targets
+
+- `ClaudeMonitorShared` — pure-Foundation lib shared by app + widget: `UsageSnapshot`/`AccountSnapshot`, `SnapshotStore` (writes/reads **both** the App Group container and `~/Library/Application Support/ClaudeMonitor/`), `UsageHistoryStore`, `SharedConstants` (app-group id, widget kind). Keep it free of SwiftUI/AppKit so the widget needn't pull in app code.
+- `ClaudeMonitor` — the menu-bar app (executable). Depends on the shared lib.
+- `ClaudeMonitorWidget` — WidgetKit extension (executable, `@main WidgetBundle`). `swift build` compiles it; `scripts/_assemble.sh` turns the binary into `Contents/PlugIns/ClaudeMonitorWidget.appex` and signs it.
+
+### Widget data sharing & signing (non-obvious)
+
+- App ↔ widget share data through the App Group `group.com.kimsoungryoul.ClaudeMonitor` (must match `SharedConstants.appGroupId`). The widget extension is **OS-sandboxed**, so it can only read the App Group container (not App Support).
+- The host writes to the group container even under ad-hoc signing (non-sandboxed app), but the **sandboxed widget** is granted the group only when the app is *validly* signed. So: ad-hoc `.dmg` → menu-bar app fully works, widget may show no live data. Sign with a Developer ID (`CODESIGN_IDENTITY=... ./scripts/build_app.sh`) to activate it.
+- `scripts/_assemble.sh` is sourced by both `build_app.sh` and `package.sh`; it writes the host + widget `Info.plist`/entitlements (app-groups), embeds the `.appex`, and signs inner→outer (no `--deep`).
 
 ## Unofficial claude.ai API
 
