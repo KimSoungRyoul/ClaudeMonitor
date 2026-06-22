@@ -52,18 +52,26 @@ final class WebSession: NSObject {
         try await ensureHostLoaded()
         await setSessionKeyCookie(sessionKey)
 
-        // 챌린지가 풀리는 데 시간이 걸릴 수 있어 백오프로 재시도한다.
+        // 챌린지가 풀리는 데 시간이 걸릴 수 있고, fetch 가 일시적으로 던질 수도 있어
+        // 백오프로 재시도한다.
         var lastBody = ""
+        var lastError: Error?
         for attempt in 0..<10 {
-            let (status, body) = try await rawFetch(urlString)
-            if !looksLikeChallenge(body) {
-                return (status, Data(body.utf8))
+            do {
+                let (status, body) = try await rawFetch(urlString)
+                if !looksLikeChallenge(body) {
+                    return (status, Data(body.utf8))
+                }
+                lastBody = body
+            } catch {
+                // 일시적 JS/네트워크 예외 → 재시도
+                lastError = error
             }
-            lastBody = body
-            // 중간에 한 번 호스트를 다시 띄워 챌린지를 자극한다.
+            // 중간에 한 번 호스트를 다시 띄워 챌린지/페이지 상태를 회복시킨다.
             if attempt == 4 { try? await loadHost() }
             try? await Self.sleep(seconds: 1.0)
         }
+        if let lastError, lastBody.isEmpty { throw lastError }
         FileHandle.standardError.write(Data("WebSession: challenge not cleared. head=\(lastBody.prefix(120))\n".utf8))
         throw ClaudeAPIError.cloudflareBlocked
     }
