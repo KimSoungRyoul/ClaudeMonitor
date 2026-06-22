@@ -25,12 +25,12 @@ Demo data, the "Demo mode" toggle, the demo badge, and the `CTM_PREVIEW_OUT` / `
 
 ## Architecture
 
-`AppState` (@MainActor) fetches per-account usage via the `ClaudeAPI` actor in parallel, stores `usage[accountId]`, and calls `rebuildMenuBarImage()`. Files: `App.swift` (MenuBarExtra + AppDelegate + WindowManager), `AppState`, `Localization` (`L.s("ko","en")`), `Models`, `Services/{ClaudeAPI,Keychain,UpdateChecker}`, `DemoData`, `PreviewRenderer`, `Views/{Theme,Components,UsageSections,PopoverView,MenuBarRenderer,SettingsView,WebLoginView}`.
+`AppState` (@MainActor) fetches per-account usage via the `ClaudeAPI` actor in parallel, stores `usage[accountId]`, and calls `rebuildMenuBarImage()`. Files: `App.swift` (MenuBarExtra + AppDelegate + WindowManager), `AppState`, `Localization` (`L.s("ko","en")`), `Models`, `Services/{ClaudeAPI,WebSession,Keychain,UpdateChecker}`, `DemoData`, `PreviewRenderer`, `Views/{Theme,Components,UsageSections,PopoverView,MenuBarRenderer,SettingsView,WebLoginView}`.
 
 ## Unofficial claude.ai API
 
 - `GET /api/organizations` → orgs (uuid/name/capabilities); `GET /api/organizations/{uuid}/usage` → `five_hour`/`seven_day`/`seven_day_opus`/`seven_day_sonnet` (`utilization` 0–100, `resets_at`) + embedded `extra_usage`; `GET .../overage_spend_limit` → Extra Usage (cents).
-- Auth: `Cookie: sessionKey=sk-ant-...`. **Cloudflare bypass requires real browser headers** (`anthropic-client-platform: web_claude_ai`, Chrome UA, `origin/referer: https://claude.ai`, `sec-fetch-*`); an HTML response = blocked.
+- Auth: `Cookie: sessionKey=sk-ant-...`. **Cloudflare now serves a managed challenge (`cf-mitigated: challenge`, "Just a moment…" HTML, 403) on `/api/*`** — static spoofed headers via `URLSession` no longer pass (TLS/JS fingerprint ≠ real browser). So requests go through `WebSession` (`Services/WebSession.swift`): a hidden offscreen `WKWebView` loads claude.ai once (WebKit solves the challenge → `cf_clearance`/`__cf_bm` cookies), then each API call runs as a same-origin `fetch()` via `callAsyncJavaScript`, with `sessionKey` injected into the cookie store per request (serialized by an async lock). Verify with `CTM_WEBSESSION_TEST=1 ./.build/debug/ClaudeMonitor` (DEBUG): an invalid key must return JSON 403 `permission_error`, **not** the challenge HTML.
 - Multi-account = each org of one sessionKey is an `Account`. sessionKey → Keychain, metadata → UserDefaults. Login via `WebLoginView` (WKWebView, nonPersistent) auto-extracts the cookie.
 
 ## Design rules

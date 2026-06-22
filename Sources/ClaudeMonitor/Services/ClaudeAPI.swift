@@ -7,8 +7,9 @@
 //  - GET /api/organizations/{uuid}/usage          → 5시간/7일/Opus/Sonnet 한도
 //  - GET /api/organizations/{uuid}/overage_spend_limit → Extra Usage(추가 결제)
 //
-//  Cloudflare 봇 차단을 피하려고 실제 브라우저와 동일한 헤더를 부착하고,
-//  인증은 `Cookie: sessionKey=sk-ant-...` 로 처리한다.
+//  Cloudflare 봇 차단(managed challenge)을 피하려고, 정적 헤더 대신 실제 WebKit 엔진
+//  (WKWebView)으로 챌린지를 통과한 페이지 안에서 same-origin fetch 로 호출한다(WebSession).
+//  인증은 요청 직전 쿠키 스토어에 `sessionKey` 를 주입해 처리한다.
 //  (API 호출 규약은 공개 프로젝트 Usage4Claude 의 문서/구현을 참고했다.)
 //
 
@@ -43,74 +44,37 @@ actor ClaudeAPI {
     static let shared = ClaudeAPI()
 
     private let base = "https://claude.ai/api"
-    private let session: URLSession
 
-    init() {
-        let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
-        cfg.timeoutIntervalForResource = 60
-        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
-        cfg.httpShouldSetCookies = false           // Cookie 헤더를 직접 관리
-        cfg.httpCookieAcceptPolicy = .never
-        self.session = URLSession(configuration: cfg)
-    }
+    init() {}
 
-    // MARK: - 헤더
+    // MARK: - 전송
 
-    /// Cloudflare 우회용 브라우저 모사 헤더
-    private func makeRequest(path: String, sessionKey: String) -> URLRequest? {
-        guard let url = URL(string: base + path) else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.assumesHTTP3Capable = false
-        let headers: [String: String] = [
-            "accept": "*/*",
-            "accept-language": "en-US,en;q=0.9,ko;q=0.8",
-            "content-type": "application/json",
-            "anthropic-client-platform": "web_claude_ai",
-            "anthropic-client-version": "1.0.0",
-            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "origin": "https://claude.ai",
-            "referer": "https://claude.ai/settings/usage",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "Cookie": "sessionKey=\(sessionKey)"
-        ]
-        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
-        return req
-    }
+    /// 실제 WebKit 엔진(WKWebView) 안에서 same-origin fetch 로 GET 을 수행한다.
+    /// Cloudflare 챌린지를 진짜 브라우저로 통과시킨 컨텍스트를 재사용하므로 봇 차단을 받지 않는다.
+    /// (WebSession 이 챌린지 재시도를 처리하고, 끝내 막히면 cloudflareBlocked 를 던진다.)
+    private func get(path: String, sessionKey: String) async throws -> Data {
+        let (status, data) = try await WebSession.shared.request(
+            urlString: base + path, sessionKey: sessionKey)
 
-    /// 공통 요청 실행 + 상태코드/Cloudflare 검사
-    private func perform(_ req: URLRequest) async throws -> Data {
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: req)
-        } catch {
-            throw ClaudeAPIError.network(error.localizedDescription)
-        }
-
-        // HTML(=Cloudflare 챌린지) 응답 감지
+        // 만일을 위한 HTML(=Cloudflare 챌린지) 응답 감지.
+        // (진짜 챌린지는 WebSession 이 이미 걸러 cloudflareBlocked 를 던진다.)
         if let s = String(data: data, encoding: .utf8),
            s.contains("<!DOCTYPE html>") || s.contains("<html") {
             throw ClaudeAPIError.cloudflareBlocked
         }
 
-        if let http = response as? HTTPURLResponse {
-            switch http.statusCode {
-            case 200...299: break
-            case 401: throw ClaudeAPIError.unauthorized
-            case 403: throw ClaudeAPIError.cloudflareBlocked
-            case 429: throw ClaudeAPIError.rateLimited
-            default: throw ClaudeAPIError.http(http.statusCode)
-            }
-        }
-
-        // permission_error → 세션 만료로 간주
+        // permission_error(세션 만료/무효) → 다시 로그인 안내. status 분기보다 먼저 판별한다.
         if let err = try? JSONDecoder().decode(APIErrorResponse.self, from: data),
            err.error.type == "permission_error" {
             throw ClaudeAPIError.unauthorized
+        }
+
+        switch status {
+        case 200...299: break
+        // JSON 본문의 401/403 은 (Cloudflare 가 아니라) 인증/권한 문제 → 세션 만료로 안내
+        case 401, 403: throw ClaudeAPIError.unauthorized
+        case 429: throw ClaudeAPIError.rateLimited
+        default: throw ClaudeAPIError.http(status)
         }
         return data
     }
@@ -119,10 +83,7 @@ actor ClaudeAPI {
 
     /// 세션 키로 접근 가능한 조직 목록을 가져온다.
     func fetchOrganizations(sessionKey: String) async throws -> [Organization] {
-        guard let req = makeRequest(path: "/organizations", sessionKey: sessionKey) else {
-            throw ClaudeAPIError.invalidURL
-        }
-        let data = try await perform(req)
+        let data = try await get(path: "/organizations", sessionKey: sessionKey)
         do {
             return try JSONDecoder().decode([Organization].self, from: data)
         } catch {
@@ -132,10 +93,7 @@ actor ClaudeAPI {
 
     /// 한 조직의 사용량을 가져온다. Extra Usage 는 실패해도 무시(옵션).
     func fetchUsage(organizationId: String, sessionKey: String) async throws -> AccountUsage {
-        guard let req = makeRequest(path: "/organizations/\(organizationId)/usage", sessionKey: sessionKey) else {
-            throw ClaudeAPIError.invalidURL
-        }
-        let data = try await perform(req)
+        let data = try await get(path: "/organizations/\(organizationId)/usage", sessionKey: sessionKey)
         let decoded: UsageAPIResponse
         do {
             decoded = try JSONDecoder().decode(UsageAPIResponse.self, from: data)
@@ -160,10 +118,7 @@ actor ClaudeAPI {
 
     /// Extra Usage 단독 조회 (Pro/Team)
     private func fetchOverage(organizationId: String, sessionKey: String) async throws -> ExtraUsage? {
-        guard let req = makeRequest(path: "/organizations/\(organizationId)/overage_spend_limit", sessionKey: sessionKey) else {
-            return nil
-        }
-        guard let data = try? await perform(req) else { return nil }
+        guard let data = try? await get(path: "/organizations/\(organizationId)/overage_spend_limit", sessionKey: sessionKey) else { return nil }
         guard let r = try? JSONDecoder().decode(OverageAPIResponse.self, from: data) else { return nil }
         let limitCents = r.monthly_limit ?? r.monthly_credit_limit
         let enabled = r.is_enabled ?? ((limitCents ?? 0) > 0)
