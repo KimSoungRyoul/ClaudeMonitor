@@ -20,6 +20,15 @@ enum EntryPoint {
             }
             exit(0)
         }
+        // 개발 전용: WebSession(=WKWebView fetch)이 Cloudflare 챌린지를 통과하는지 검증.
+        // 잘못된 키여도 HTML("Just a moment")이 아니라 JSON(401/403)이 오면 우회 성공.
+        // 사용법: CTM_WEBSESSION_TEST=1 [CTM_TEST_KEY=sk-ant-...] ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_WEBSESSION_TEST"] != nil {
+            MainActor.assumeIsolated {
+                WebSessionProbe.run()
+            }
+            return
+        }
         #endif
         ClaudeMonitorApp.main()
     }
