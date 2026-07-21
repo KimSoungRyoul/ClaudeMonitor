@@ -65,6 +65,7 @@ struct UsageAPIResponse: Codable, Sendable {
     let seven_day: LimitUsage?
     let seven_day_opus: LimitUsage?
     let seven_day_sonnet: LimitUsage?
+    let seven_day_fable: LimitUsage?
     let extra_usage: EmbeddedExtraUsage?
 
     struct LimitUsage: Codable, Sendable {
@@ -100,7 +101,7 @@ struct APIErrorResponse: Codable, Sendable {
 
 // MARK: - 앱 내부 정규화 모델
 
-/// 단일 한도(5시간/7일/Opus/Sonnet)의 사용량
+/// 단일 한도(5시간/7일/Opus/Sonnet/Fable)의 사용량
 struct LimitUsage: Sendable, Equatable {
     /// 사용률 0~100
     let percentage: Double
@@ -148,6 +149,7 @@ struct AccountUsage: Sendable, Equatable {
     let sevenDay: LimitUsage?
     let opus: LimitUsage?
     let sonnet: LimitUsage?
+    let fable: LimitUsage?
     let extra: ExtraUsage?
 
     /// 메뉴바/요약에 쓸 대표 한도 (5시간 우선, 없으면 7일)

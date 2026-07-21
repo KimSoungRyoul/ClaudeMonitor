@@ -31,6 +31,8 @@ enum Theme {
     static let opusColor = Color(hex: 0x14B8A6)
     /// Sonnet 색상 (인디고)
     static let sonnetColor = Color(hex: 0x6366F1)
+    /// Fable 색상 (핑크)
+    static let fableColor = Color(hex: 0xEC4899)
     /// Extra Usage 색상 (앰버)
     static let extraColor = Color(hex: 0xF59E0B)
 

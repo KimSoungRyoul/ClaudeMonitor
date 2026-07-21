@@ -4,7 +4,7 @@
 //
 //  Claude.ai 비공식 웹 API 클라이언트.
 //  - GET /api/organizations                       → 조직 목록
-//  - GET /api/organizations/{uuid}/usage          → 5시간/7일/Opus/Sonnet 한도
+//  - GET /api/organizations/{uuid}/usage          → 5시간/7일/Opus/Sonnet/Fable 한도
 //  - GET /api/organizations/{uuid}/overage_spend_limit → Extra Usage(추가 결제)
 //
 //  Cloudflare 봇 차단(managed challenge)을 피하려고, 정적 헤더 대신 실제 WebKit 엔진
@@ -112,6 +112,7 @@ actor ClaudeAPI {
             sevenDay: parseLimit(decoded.seven_day),
             opus: parseLimit(decoded.seven_day_opus, hideWhenEmpty: true),
             sonnet: parseLimit(decoded.seven_day_sonnet, hideWhenEmpty: true),
+            fable: parseLimit(decoded.seven_day_fable, hideWhenEmpty: true),
             extra: extra
         )
     }
