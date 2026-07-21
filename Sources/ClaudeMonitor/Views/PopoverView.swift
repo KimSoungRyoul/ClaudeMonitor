@@ -284,7 +284,7 @@ struct AccountRow: View {
         }
     }
 
-    /// 행에 표시할 링 목록 (5h, 7d; 둘 다 없으면 Extra$)
+    /// 행에 표시할 링 목록 (5h, 7d, 그리고 모델별 f7d 등; 5h/7d 둘 다 없으면 Extra$)
     private var accountRings: [RingSpec] {
         var arr: [RingSpec] = []
         if let five = usage?.fiveHour {
@@ -292,6 +292,9 @@ struct AccountRow: View {
         }
         if let seven = usage?.sevenDay {
             arr.append(RingSpec(tag: "7d", pct: seven.percentage, color: Theme.sevenDayColor(seven.percentage)))
+        }
+        for m in usage?.models ?? [] {
+            arr.append(RingSpec(tag: m.shortTag, pct: m.usage.percentage, color: Theme.modelColor(m.name)))
         }
         if arr.count < 2, let extra = usage?.extra, extra.enabled {
             arr.append(RingSpec(tag: "$", pct: extra.percentage, color: Theme.extraColor))

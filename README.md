@@ -28,7 +28,7 @@
 ## Features
 
 - 📊 Menu-bar label with the active account's 5h / 7d usage in color
-- 🎯 Popover: dual ring gauges (5-hour + 7-day) with reset time and remaining time, plus per-model weekly cards (e.g. Fable) and an Extra Usage card
+- 🎯 Popover: ring gauges for 5-hour / 7-day / per-model weekly (e.g. `f7d` for Fable) with reset time and remaining time, plus an Extra Usage card
 - 👥 Multi-account / multi-org: every organization reachable by one session key is registered automatically; switch with a tap
 - ⏱️ Remaining-time colors: 5h → red under 1 hour; 7d → red under 1 day, gold under 2 days, else green
 - 🌐 Built-in browser (WKWebView) login auto-extracts the session key; manual paste also supported

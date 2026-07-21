@@ -24,19 +24,16 @@ struct UsageSections: View {
     @ViewBuilder
     private var heroSection: some View {
         let usage = state.activeUsage
-        let five = usage?.fiveHour
-        let seven = usage?.sevenDay
+        let rings = heroRings(usage)
 
-        if five != nil || seven != nil {
-            // 5시간 / 7일 한도를 컴팩트한 원형 게이지 2개로 (리셋 시간 포함)
-            HStack(alignment: .top, spacing: 12) {
-                if let five {
-                    ringColumn(pct: five.percentage, color: Theme.fiveHourColor(five.percentage),
-                               title: L.s("5시간", "5-hour"), reset: five.resetsAt, long: false)
-                }
-                if let seven {
-                    ringColumn(pct: seven.percentage, color: Theme.sevenDayColor(seven.percentage),
-                               title: L.s("7일", "7-day"), reset: seven.resetsAt, long: true)
+        if !rings.isEmpty {
+            // 5시간 / 7일 / 모델별(f7d 등) 한도를 컴팩트한 원형 게이지로 (리셋 시간 포함).
+            // 링이 3개 이상이면 폭에 맞게 지름을 줄인다.
+            let diameter: CGFloat = rings.count >= 3 ? 90 : 104
+            HStack(alignment: .top, spacing: rings.count >= 3 ? 8 : 12) {
+                ForEach(rings) { r in
+                    ringColumn(pct: r.pct, color: r.color, title: r.title,
+                               reset: r.reset, long: r.long, diameter: diameter)
                 }
             }
             .padding(.top, 2)
@@ -56,10 +53,33 @@ struct UsageSections: View {
         }
     }
 
+    /// 히어로에 표시할 링 목록 (5h, 7d, 그리고 모델별 f7d 등). API/데모 순서를 유지한다.
+    private func heroRings(_ usage: AccountUsage?) -> [HeroRing] {
+        var arr: [HeroRing] = []
+        if let five = usage?.fiveHour {
+            arr.append(HeroRing(id: "5h", pct: five.percentage,
+                                color: Theme.fiveHourColor(five.percentage),
+                                title: L.s("5시간", "5-hour"), reset: five.resetsAt, long: false))
+        }
+        if let seven = usage?.sevenDay {
+            arr.append(HeroRing(id: "7d", pct: seven.percentage,
+                                color: Theme.sevenDayColor(seven.percentage),
+                                title: L.s("7일", "7-day"), reset: seven.resetsAt, long: true))
+        }
+        for m in usage?.models ?? [] {
+            arr.append(HeroRing(id: m.name, pct: m.usage.percentage,
+                                color: Theme.modelColor(m.name),
+                                title: m.shortTag, reset: m.usage.resetsAt, long: true))
+        }
+        return arr
+    }
+
     /// 히어로의 한 컬럼: 원형 게이지 + 라벨 + 리셋시간/남은시간
-    private func ringColumn(pct: Double, color: Color, title: String, reset: Date?, long: Bool) -> some View {
+    private func ringColumn(pct: Double, color: Color, title: String, reset: Date?,
+                            long: Bool, diameter: CGFloat = 104) -> some View {
         VStack(spacing: 5) {
-            RingGauge(percentage: pct, color: color, lineWidth: 9, diameter: 104, caption: title)
+            RingGauge(percentage: pct, color: color,
+                      lineWidth: diameter >= 104 ? 9 : 8, diameter: diameter, caption: title)
             TimelineView(.periodic(from: .now, by: 30)) { ctx in
                 VStack(spacing: 1) {
                     Text(long ? TimeFmt.resetLong(reset) : TimeFmt.resetShort(reset))
@@ -79,15 +99,9 @@ struct UsageSections: View {
 
     @ViewBuilder
     private var limitsSection: some View {
-        // 5시간/7일은 히어로 듀얼 링이 대신하므로, 여기선 모델별 주간(Fable 등)/Extra 만 카드로.
+        // 5시간/7일/모델별(f7d 등)은 히어로 링이 대신하므로, 여기선 Extra Usage 만 카드로.
         let usage = state.activeUsage
         VStack(spacing: 8) {
-            ForEach(usage?.models ?? []) { model in
-                LimitCard(icon: Theme.modelIcon(model.name),
-                          title: L.s("7일 \(model.name)", "7-day \(model.name)"),
-                          limit: model.usage,
-                          color: Theme.modelColor(model.name))
-            }
             if let extra = usage?.extra, extra.enabled {
                 extraCard(extra)
             }
@@ -142,4 +156,14 @@ struct UsageSections: View {
             }
         }
     }
+}
+
+/// 히어로 링 1개의 스펙 (5h / 7d / 모델별 f7d)
+private struct HeroRing: Identifiable {
+    let id: String
+    let pct: Double
+    let color: Color
+    let title: String
+    let reset: Date?
+    let long: Bool
 }

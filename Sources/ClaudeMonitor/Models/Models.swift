@@ -133,6 +133,9 @@ struct ModelLimit: Sendable, Equatable, Identifiable {
     let name: String
     let usage: LimitUsage
     var id: String { name }
+
+    /// 링/미니링에 쓰는 짧은 태그 — 모델 첫 글자 + "7d" (예: Fable → "f7d", Opus → "o7d")
+    var shortTag: String { "\(name.prefix(1).lowercased())7d" }
 }
 
 /// Extra Usage(추가 결제 사용액)
