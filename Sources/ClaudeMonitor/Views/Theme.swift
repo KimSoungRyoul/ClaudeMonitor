@@ -33,8 +33,30 @@ enum Theme {
     static let sonnetColor = Color(hex: 0x6366F1)
     /// Fable 색상 (핑크)
     static let fableColor = Color(hex: 0xEC4899)
+    /// 알 수 없는 모델 fallback 색상 (슬레이트)
+    static let modelFallbackColor = Color(hex: 0x64748B)
     /// Extra Usage 색상 (앰버)
     static let extraColor = Color(hex: 0xF59E0B)
+
+    /// 모델 표시 이름 → 카드 색상
+    static func modelColor(_ name: String) -> Color {
+        switch name.lowercased() {
+        case "opus":   return opusColor
+        case "sonnet": return sonnetColor
+        case "fable":  return fableColor
+        default:       return modelFallbackColor
+        }
+    }
+
+    /// 모델 표시 이름 → SF Symbol 아이콘
+    static func modelIcon(_ name: String) -> String {
+        switch name.lowercased() {
+        case "opus":   return "brain.head.profile"
+        case "sonnet": return "waveform"
+        case "fable":  return "sparkles"
+        default:       return "cube"
+        }
+    }
 
     /// 큰 링에 쓰는 그라데이션
     static func ringGradient(_ pct: Double, base: (Double) -> Color) -> AngularGradient {

@@ -29,6 +29,14 @@ enum EntryPoint {
             }
             return
         }
+        // 개발 전용: usage API 응답 원본 JSON 덤프 (필드명 확인용).
+        // 사용법: CTM_USAGE_DUMP=1 CTM_TEST_KEY=sk-ant-... ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_USAGE_DUMP"] != nil {
+            MainActor.assumeIsolated {
+                WebSessionProbe.dumpUsage()
+            }
+            return
+        }
         #endif
         ClaudeMonitorApp.main()
     }

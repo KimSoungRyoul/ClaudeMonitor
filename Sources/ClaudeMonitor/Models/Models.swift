@@ -60,17 +60,35 @@ struct Organization: Codable, Identifiable, Sendable, Equatable {
 }
 
 /// `GET /api/organizations/{uuid}/usage` 응답
+///
+/// 최신 API 는 모델별 한도를 top-level `seven_day_opus`/`seven_day_sonnet`(이제 항상 null)
+/// 이 아니라 `limits` 배열로 준다. 배열 항목 중 `kind == "weekly_scoped"` 이고
+/// `scope.model.display_name` 이 있는 것이 모델별(예: Fable) 주간 한도다.
 struct UsageAPIResponse: Codable, Sendable {
     let five_hour: LimitUsage?
     let seven_day: LimitUsage?
-    let seven_day_opus: LimitUsage?
-    let seven_day_sonnet: LimitUsage?
-    let seven_day_fable: LimitUsage?
+    let limits: [LimitEntry]?
     let extra_usage: EmbeddedExtraUsage?
 
     struct LimitUsage: Codable, Sendable {
         let utilization: Double      // 0~100
         let resets_at: String?       // ISO8601
+    }
+
+    /// `limits` 배열의 한 항목
+    struct LimitEntry: Codable, Sendable {
+        let kind: String?            // "session" / "weekly_all" / "weekly_scoped"
+        let percent: Double?         // 0~100
+        let resets_at: String?       // ISO8601
+        let scope: Scope?            // weekly_scoped 일 때 모델/서피스 범위
+
+        struct Scope: Codable, Sendable {
+            let model: Model?
+            struct Model: Codable, Sendable {
+                let id: String?
+                let display_name: String?   // "Fable", "Opus", ...
+            }
+        }
     }
 
     struct EmbeddedExtraUsage: Codable, Sendable {
@@ -101,12 +119,20 @@ struct APIErrorResponse: Codable, Sendable {
 
 // MARK: - 앱 내부 정규화 모델
 
-/// 단일 한도(5시간/7일/Opus/Sonnet/Fable)의 사용량
+/// 단일 한도(5시간/7일/모델별)의 사용량
 struct LimitUsage: Sendable, Equatable {
     /// 사용률 0~100
     let percentage: Double
     /// 리셋 시각 (없으면 아직 사용 시작 전)
     let resetsAt: Date?
+}
+
+/// 모델별 주간 한도 (예: Fable/Opus/Sonnet). API `limits` 의 weekly_scoped 항목에서 나온다.
+struct ModelLimit: Sendable, Equatable, Identifiable {
+    /// 모델 표시 이름 (API 의 scope.model.display_name)
+    let name: String
+    let usage: LimitUsage
+    var id: String { name }
 }
 
 /// Extra Usage(추가 결제 사용액)
@@ -147,9 +173,8 @@ struct ExtraUsage: Sendable, Equatable {
 struct AccountUsage: Sendable, Equatable {
     let fiveHour: LimitUsage?
     let sevenDay: LimitUsage?
-    let opus: LimitUsage?
-    let sonnet: LimitUsage?
-    let fable: LimitUsage?
+    /// 모델별 주간 한도 (Fable 등). API 가 주는 순서를 유지한다.
+    let models: [ModelLimit]
     let extra: ExtraUsage?
 
     /// 메뉴바/요약에 쓸 대표 한도 (5시간 우선, 없으면 7일)

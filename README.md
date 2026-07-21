@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Track usage for <b>multiple Claude accounts</b> right from the macOS menu bar — 5-hour / 7-day limits, Opus·Sonnet·Fable limits, and Extra Usage ($), per account, with quick switching.
+  Track usage for <b>multiple Claude accounts</b> right from the macOS menu bar — 5-hour / 7-day limits, per-model weekly limits (e.g. Fable), and Extra Usage ($), per account, with quick switching.
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@
 ## Features
 
 - 📊 Menu-bar label with the active account's 5h / 7d usage in color
-- 🎯 Popover: dual ring gauges (5-hour + 7-day) with reset time and remaining time, plus Opus/Sonnet/Fable/Extra cards
+- 🎯 Popover: dual ring gauges (5-hour + 7-day) with reset time and remaining time, plus per-model weekly cards (e.g. Fable) and an Extra Usage card
 - 👥 Multi-account / multi-org: every organization reachable by one session key is registered automatically; switch with a tap
 - ⏱️ Remaining-time colors: 5h → red under 1 hour; 7d → red under 1 day, gold under 2 days, else green
 - 🌐 Built-in browser (WKWebView) login auto-extracts the session key; manual paste also supported
@@ -61,7 +61,7 @@ Requires macOS 14+ and a Swift 6 toolchain (Xcode 16).
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/organizations` | Organizations reachable by the session |
-| `GET /api/organizations/{uuid}/usage` | `five_hour` / `seven_day` / `seven_day_opus` / `seven_day_sonnet` / `seven_day_fable` (utilization, resets_at) |
+| `GET /api/organizations/{uuid}/usage` | `five_hour` / `seven_day` (utilization, resets_at) + `limits[]` — per-model weekly limits come from `kind: "weekly_scoped"` entries with `scope.model.display_name` (e.g. `Fable`) |
 | `GET /api/organizations/{uuid}/overage_spend_limit` | Extra Usage (overage spend) |
 
 Auth: `Cookie: sessionKey=sk-ant-...` plus browser-mimicking headers (`anthropic-client-platform`, `origin`, `referer`, `sec-fetch-*`) to pass Cloudflare.

@@ -4,7 +4,7 @@
 //
 //  Claude.ai 비공식 웹 API 클라이언트.
 //  - GET /api/organizations                       → 조직 목록
-//  - GET /api/organizations/{uuid}/usage          → 5시간/7일/Opus/Sonnet/Fable 한도
+//  - GET /api/organizations/{uuid}/usage          → 5시간/7일 + limits[](모델별 주간, 예: Fable)
 //  - GET /api/organizations/{uuid}/overage_spend_limit → Extra Usage(추가 결제)
 //
 //  Cloudflare 봇 차단(managed challenge)을 피하려고, 정적 헤더 대신 실제 WebKit 엔진
@@ -110,11 +110,22 @@ actor ClaudeAPI {
         return AccountUsage(
             fiveHour: parseLimit(decoded.five_hour),
             sevenDay: parseLimit(decoded.seven_day),
-            opus: parseLimit(decoded.seven_day_opus, hideWhenEmpty: true),
-            sonnet: parseLimit(decoded.seven_day_sonnet, hideWhenEmpty: true),
-            fable: parseLimit(decoded.seven_day_fable, hideWhenEmpty: true),
+            models: parseModelLimits(decoded.limits),
             extra: extra
         )
+    }
+
+    /// `limits` 배열에서 모델별(weekly_scoped) 한도를 뽑아낸다.
+    /// 예: Fable → `scope.model.display_name == "Fable"`. API 순서를 유지한다.
+    private func parseModelLimits(_ limits: [UsageAPIResponse.LimitEntry]?) -> [ModelLimit] {
+        guard let limits else { return [] }
+        return limits.compactMap { entry in
+            guard entry.kind == "weekly_scoped",
+                  let name = entry.scope?.model?.display_name, !name.isEmpty,
+                  let pct = entry.percent else { return nil }
+            return ModelLimit(name: name,
+                              usage: LimitUsage(percentage: pct, resetsAt: Self.parseDate(entry.resets_at)))
+        }
     }
 
     /// Extra Usage 단독 조회 (Pro/Team)
@@ -146,9 +157,8 @@ actor ClaudeAPI {
         )
     }
 
-    private func parseLimit(_ l: UsageAPIResponse.LimitUsage?, hideWhenEmpty: Bool = false) -> LimitUsage? {
+    private func parseLimit(_ l: UsageAPIResponse.LimitUsage?) -> LimitUsage? {
         guard let l else { return nil }
-        if hideWhenEmpty && l.utilization == 0 && l.resets_at == nil { return nil }
         return LimitUsage(percentage: l.utilization, resetsAt: Self.parseDate(l.resets_at))
     }
 

@@ -46,5 +46,47 @@ enum WebSessionProbe {
         }
         app.run()
     }
+
+    /// 실제 usage API 응답 원본 JSON 을 덤프한다(필드명 확인용).
+    /// 사용법: CTM_USAGE_DUMP=1 CTM_TEST_KEY=sk-ant-... ./.build/debug/ClaudeMonitor
+    static func dumpUsage() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+
+        guard let key = ProcessInfo.processInfo.environment["CTM_TEST_KEY"], !key.isEmpty else {
+            print("DUMP: set CTM_TEST_KEY=sk-ant-...")
+            exit(2)
+        }
+        let base = "https://claude.ai/api"
+
+        _ = base
+        Task { @MainActor in
+            do {
+                let orgs = try await ClaudeAPI.shared.fetchOrganizations(sessionKey: key)
+                print("DUMP: \(orgs.count) organizations")
+                for org in orgs {
+                    do {
+                        let u = try await ClaudeAPI.shared.fetchUsage(organizationId: org.uuid, sessionKey: key)
+                        let five = u.fiveHour.map { "\(Int($0.percentage))%" } ?? "—"
+                        let seven = u.sevenDay.map { "\(Int($0.percentage))%" } ?? "—"
+                        let models = u.models.map { "\($0.name)=\(Int($0.usage.percentage))%" }.joined(separator: ", ")
+                        let extra = u.extra.map { "extra \($0.compactUsed)/\($0.currencySymbol)\(Int($0.limit))" } ?? "no-extra"
+                        print("• \(org.name): 5h=\(five) 7d=\(seven) | models=[\(models.isEmpty ? "none" : models)] | \(extra)")
+                    } catch {
+                        print("• \(org.name): \(error.localizedDescription)")
+                    }
+                }
+            } catch {
+                print("DUMP: org fetch error: \(error)")
+            }
+            exit(0)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 90 * 1_000_000_000)
+            print("DUMP: timeout")
+            exit(2)
+        }
+        app.run()
+    }
 }
 #endif

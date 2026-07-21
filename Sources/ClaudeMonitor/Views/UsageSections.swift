@@ -79,17 +79,14 @@ struct UsageSections: View {
 
     @ViewBuilder
     private var limitsSection: some View {
-        // 5시간/7일은 히어로 듀얼 링이 대신하므로, 여기선 Opus/Sonnet/Fable/Extra 만 카드로.
+        // 5시간/7일은 히어로 듀얼 링이 대신하므로, 여기선 모델별 주간(Fable 등)/Extra 만 카드로.
         let usage = state.activeUsage
         VStack(spacing: 8) {
-            if let opus = usage?.opus {
-                LimitCard(icon: "brain.head.profile", title: L.s("7일 Opus", "7-day Opus"), limit: opus, color: Theme.opusColor)
-            }
-            if let sonnet = usage?.sonnet {
-                LimitCard(icon: "waveform", title: L.s("7일 Sonnet", "7-day Sonnet"), limit: sonnet, color: Theme.sonnetColor)
-            }
-            if let fable = usage?.fable {
-                LimitCard(icon: "sparkles", title: L.s("7일 Fable", "7-day Fable"), limit: fable, color: Theme.fableColor)
+            ForEach(usage?.models ?? []) { model in
+                LimitCard(icon: Theme.modelIcon(model.name),
+                          title: L.s("7일 \(model.name)", "7-day \(model.name)"),
+                          limit: model.usage,
+                          color: Theme.modelColor(model.name))
             }
             if let extra = usage?.extra, extra.enabled {
                 extraCard(extra)

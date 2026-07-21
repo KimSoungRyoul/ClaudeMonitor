@@ -43,31 +43,31 @@ enum DemoData {
             return AccountUsage(
                 fiveHour: LimitUsage(percentage: 42, resetsAt: at(2.5)),
                 sevenDay: LimitUsage(percentage: 58, resetsAt: at(24 * 3 + 5)),
-                opus: LimitUsage(percentage: 30, resetsAt: at(24 * 4)),
-                sonnet: nil,
-                fable: LimitUsage(percentage: 12, resetsAt: at(24 * 4)),
+                models: [ModelLimit(name: "Fable", usage: LimitUsage(percentage: 12, resetsAt: at(24 * 4)))],
                 extra: nil)
         case ids[1]: // 샘플 B (7일 1.5일 남음 → 노랑 데모)
             return AccountUsage(
                 fiveHour: LimitUsage(percentage: 8, resetsAt: at(3.8)),
                 sevenDay: LimitUsage(percentage: 19, resetsAt: at(36)),
-                opus: nil, sonnet: nil, fable: nil, extra: nil)
+                models: [ModelLimit(name: "Fable", usage: LimitUsage(percentage: 74, resetsAt: at(36)))],
+                extra: nil)
         case ids[2]: // 샘플 C (5시간 곧/7일 18시간 남음 → 빨강 데모)
             return AccountUsage(
                 fiveHour: LimitUsage(percentage: 9, resetsAt: at(1.2)),
                 sevenDay: LimitUsage(percentage: 31, resetsAt: at(18)),
-                opus: nil, sonnet: nil, fable: nil, extra: nil)
+                models: [ModelLimit(name: "Fable", usage: LimitUsage(percentage: 95, resetsAt: at(18)))],
+                extra: nil)
         case ids[3]: // 샘플 D (Enterprise + Extra Usage)
             return AccountUsage(
                 fiveHour: nil,
                 sevenDay: LimitUsage(percentage: 64, resetsAt: at(24 * 2 + 3)),
-                opus: nil, sonnet: nil, fable: nil,
+                models: [],
                 extra: ExtraUsage(enabled: true, used: 75.1, limit: 200, currencyCode: "USD"))
         default:
             return AccountUsage(
                 fiveHour: LimitUsage(percentage: 25, resetsAt: at(2)),
                 sevenDay: LimitUsage(percentage: 40, resetsAt: at(24 * 4)),
-                opus: nil, sonnet: nil, fable: nil, extra: nil)
+                models: [], extra: nil)
         }
     }
 }
