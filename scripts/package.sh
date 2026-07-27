@@ -2,7 +2,7 @@
 #
 # ClaudeMonitor 패키징 스크립트 (CI/릴리즈용)
 # swift build -c release → .app 번들 조립 → ad-hoc 서명 → DMG(hdiutil) 생성. 로컬 설치는 하지 않음.
-# 사용: ./scripts/package.sh [VERSION]   (기본 0.1.0; CI는 태그에서 추출해 전달)
+# 사용: ./scripts/package.sh [VERSION]   (생략하면 최신 git 태그; CI는 태그에서 추출해 전달)
 #
 set -euo pipefail
 
@@ -12,7 +12,9 @@ cd "$ROOT"
 APP_NAME="ClaudeMonitor"
 BINARY="ClaudeMonitor"
 BUNDLE_ID="com.kimsoungryoul.ClaudeMonitor"
-VERSION="${1:-0.1.7}"
+# 버전: 인자(CI는 태그에서 추출해 전달) > 최신 git 태그 > 폴백
+VERSION="${1:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')}"
+VERSION="${VERSION:-0.0.0}"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST_DIR="$ROOT/dist"

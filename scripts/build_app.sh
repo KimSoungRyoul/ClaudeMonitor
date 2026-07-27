@@ -10,7 +10,9 @@ cd "$ROOT"
 APP_NAME="ClaudeMonitor"
 BINARY="ClaudeMonitor"
 BUNDLE_ID="com.kimsoungryoul.ClaudeMonitor"
-VERSION="0.1.7"
+# 버전: 인자 > 최신 git 태그 > 폴백. (상수로 박아두면 릴리즈마다 낡아 UpdateChecker 가 오판한다)
+VERSION="${1:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')}"
+VERSION="${VERSION:-0.0.0}"
 
 BUILD_DIR="$ROOT/.build/release"
 DIST_DIR="$ROOT/dist"

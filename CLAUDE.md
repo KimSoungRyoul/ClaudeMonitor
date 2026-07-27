@@ -44,6 +44,7 @@ Demo data, the "Demo mode" toggle, the demo badge, and the `CTM_PREVIEW_OUT` / `
 
 - A `ScrollView` inside `MenuBarExtra(.window)` collapses to height 0 → body vanishes. `PopoverView` measures content height via GeometryReader + `BodyHeightKey` and sets `.frame(height: min(measured, max))`.
 - Header `Menu` needs `.menuIndicator(.hidden)` + `.fixedSize()` to not overlap the refresh button.
+- `WebSession`'s host window carries a live claude.ai page, so it must never be visible: pushing it to negative coordinates is not enough — macOS relocates windows that sit on no display (display connect/disconnect, resolution change, sleep/wake) and the borderless, click-through login page then sticks to the desktop with no way to close it. It is a `HiddenHostWindow` (`constrainFrameRect` neutralized, never key/main) with `alphaValue = 0`, `sharingType = .none`, and it re-parks itself off every display on `didChangeScreenParameters`/`didMove`. `CTM_WEBSESSION_TEST=1` asserts this (it even forces the window on-screen and checks it re-parks). Offscreen windows are already `occlusionState` non-visible, so full transparency costs nothing for challenge solving.
 
 ## Release / CI
 
