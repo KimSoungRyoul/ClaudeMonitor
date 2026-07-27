@@ -50,6 +50,15 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(notificationThreshold, forKey: Keys.notificationThreshold) }
     }
 
+    /// 모델별 주간 한도(Fable 등) 표시 여부. 끄면 히어로 링·계정 행·알림에서 모두 빠진다.
+    /// (같은 usage 응답에 딸려오는 값이라 껐다 켜도 재조회가 필요 없다 — 캐시에는 그대로 남긴다)
+    @Published var showModelLimits: Bool {
+        didSet {
+            UserDefaults.standard.set(showModelLimits, forKey: Keys.showModelLimits)
+            rebuildMenuBarImage()
+        }
+    }
+
     /// 세션이 만료된 계정 (행에서 바로 다시 로그인할 수 있게 표시)
     @Published var expiredAccounts: Set<UUID> = []
 
@@ -87,6 +96,7 @@ final class AppState: ObservableObject {
         static let usageCachedAt = "usageCachedAt.v1"
         static let notificationsEnabled = "notificationsEnabled.v1"
         static let notificationThreshold = "notificationThreshold.v1"
+        static let showModelLimits = "showModelLimits.v1"
     }
 
     /// 팝오버를 열었을 때 이 간격 안이면 새로고침을 건너뛴다(연속 오픈으로 API 를 두드리지 않게).
@@ -104,17 +114,31 @@ final class AppState: ObservableObject {
     /// 활성 계정의 사용량 (개발 빌드의 데모 모드면 샘플)
     var activeUsage: AccountUsage? {
         #if DEBUG
-        if demoMode { return DemoData.usage(for: activeAccount?.id) }
+        if demoMode { return displayed(DemoData.usage(for: activeAccount?.id)) }
         #endif
         guard let id = activeAccount?.id else { return nil }
-        return usage[id]
+        return displayed(usage[id])
     }
 
     func usage(for account: Account) -> AccountUsage? {
         #if DEBUG
-        if demoMode { return DemoData.usage(for: account.id) }
+        if demoMode { return displayed(DemoData.usage(for: account.id)) }
         #endif
-        return usage[account.id]
+        return displayed(usage[account.id])
+    }
+
+    /// 표시 옵션을 반영한 사용량. UI 가 읽는 경로(히어로 링/계정 행/메뉴바)는 모두 여기를 거친다.
+    private func displayed(_ u: AccountUsage?) -> AccountUsage? {
+        Self.applyDisplayOptions(u, showModelLimits: showModelLimits)
+    }
+
+    /// 표시 옵션 적용(순수 함수 — 테스트에서 직접 검증한다).
+    /// `showModelLimits == false` 면 모델별 주간 한도(Fable 등)를 빼고 돌려준다.
+    nonisolated static func applyDisplayOptions(_ usage: AccountUsage?, showModelLimits: Bool) -> AccountUsage? {
+        guard let usage else { return nil }
+        guard !showModelLimits, !usage.models.isEmpty else { return usage }
+        return AccountUsage(fiveHour: usage.fiveHour, sevenDay: usage.sevenDay,
+                            models: [], extra: usage.extra)
     }
 
     // MARK: - Init
@@ -125,6 +149,8 @@ final class AppState: ObservableObject {
         self.notificationsEnabled = UserDefaults.standard.bool(forKey: Keys.notificationsEnabled)
         let threshold = UserDefaults.standard.integer(forKey: Keys.notificationThreshold)
         self.notificationThreshold = threshold == 0 ? 90 : threshold
+        // 기본값은 표시(기존 동작 유지). bool(forKey:) 는 키가 없을 때도 false 라 object 로 구분한다.
+        self.showModelLimits = (UserDefaults.standard.object(forKey: Keys.showModelLimits) as? Bool) ?? true
         let langRaw = UserDefaults.standard.string(forKey: Keys.language)
         let lang = langRaw.flatMap { AppLanguage(rawValue: $0) } ?? .system
         self.language = lang
@@ -342,7 +368,9 @@ final class AppState: ObservableObject {
         lastUpdated = Date()
         saveUsageCache()
         if notificationsEnabled {
-            UsageNotifier.evaluate(accounts: accounts, usage: usage,
+            // 숨긴 한도로는 알리지 않는다 (UI 에 없는 값으로 알림만 뜨면 영문을 알 수 없다).
+            let visible = usage.compactMapValues { displayed($0) }
+            UsageNotifier.evaluate(accounts: accounts, usage: visible,
                                    threshold: Double(notificationThreshold))
         }
         rebuildMenuBarImage()

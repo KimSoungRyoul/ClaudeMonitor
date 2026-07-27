@@ -83,6 +83,15 @@ struct SettingsView: View {
                     if let notificationError {
                         Text(notificationError).font(.caption).foregroundStyle(.orange)
                     }
+
+                    Divider()
+
+                    Toggle(L.s("모델별 주간 사용량 조회 (Fable)", "Track per-model weekly usage (Fable)"),
+                           isOn: $state.showModelLimits)
+                    Text(L.s("끄면 Fable 등 모델별 주간 한도(f7d) 링과 알림을 표시하지 않습니다. 5시간·7일 사용량만 봅니다.",
+                             "When off, per-model weekly rings (f7d) and their notifications are hidden — only 5-hour / 7-day usage is shown."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(6)
                 .frame(maxWidth: .infinity, alignment: .leading)

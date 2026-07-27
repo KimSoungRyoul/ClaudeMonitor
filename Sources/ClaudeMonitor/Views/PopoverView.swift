@@ -73,6 +73,10 @@ struct PopoverView: View {
                 Menu {
                     Button(L.s("Claude 계정 추가/로그인…", "Add Claude account / Log in…")) { WindowManager.shared.openLogin() }
                     Button(L.s("설정…", "Settings…")) { WindowManager.shared.openSettings() }
+                    Divider()
+                    // 설정을 열지 않고도 f7d 링을 켜고 끌 수 있게 (좁은 팝오버에서 자주 쓰는 옵션)
+                    Toggle(L.s("모델별 주간 사용량 (Fable)", "Per-model weekly usage (Fable)"),
+                           isOn: $state.showModelLimits)
                     #if DEBUG
                     Divider()
                     Toggle(L.s("데모 모드", "Demo mode"), isOn: Binding(
@@ -215,10 +219,11 @@ struct AccountRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // 좌측 컬러 인디케이터
+            // 좌측 컬러 인디케이터 (보조 줄 수에 따라 행 높이가 달라지므로 행 높이에 맞춰 늘린다)
             RoundedRectangle(cornerRadius: 2)
                 .fill(indicatorColor)
-                .frame(width: 3, height: 40)
+                .frame(width: 3)
+                .frame(minHeight: 40, maxHeight: .infinity)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
@@ -265,7 +270,7 @@ struct AccountRow: View {
         } else if usage == nil {
             Text(L.s("불러오는 중…", "Loading…")).font(.system(size: 10)).foregroundStyle(.secondary)
         } else {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 3) {
                 if let five = usage?.fiveHour, let reset = five.resetsAt {
                     resetLine(icon: "clock", color: Theme.fiveHourColor(five.percentage),
                               text: TimeFmt.resetShort(reset), resetsAt: reset, longCycle: false)
@@ -281,27 +286,31 @@ struct AccountRow: View {
         }
     }
 
-    /// 보조 줄 한 항목: 아이콘 + 리셋 시각(회색) + 남은 시간(주기별 색상 규칙)
+    /// 보조 줄 한 항목: 아이콘 + 리셋 시각(회색) / 남은 시간(주기별 색상 규칙)
+    ///
+    /// 리셋 시각과 남은 시간을 한 줄에 붙이면 링 3개(5h/7d/f7d)가 폭을 먹는 좁은 행에서
+    /// 뒤쪽이 "…" 로 잘려 정작 중요한 "몇 시간 남음"이 안 보였다 → 줄을 나눠 둘 다 보이게 한다.
     @ViewBuilder
     private func resetLine(icon: String, color: Color, text: String, resetsAt: Date?, longCycle: Bool = false) -> some View {
-        HStack(spacing: 4) {
+        HStack(alignment: .top, spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 8, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 10)
-            if let resetsAt {
-                TimelineView(.periodic(from: .now, by: 30)) { ctx in
-                    (Text(text + "  ").foregroundColor(.secondary)
-                        + Text(TimeFmt.remainingCompact(resetsAt, now: ctx.date) + L.s(" 남음", " left"))
-                            .foregroundColor(TimeFmt.remainingColor(resetsAt, longCycle: longCycle, now: ctx.date)))
-                        .font(.system(size: 9, weight: .medium))
-                        .lineLimit(1)
-                }
-            } else {
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(text)
-                    .font(.system(size: 9.5))
+                    .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let resetsAt {
+                    TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                        Text(TimeFmt.remaining(resetsAt, now: ctx.date))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(TimeFmt.remainingColor(resetsAt, longCycle: longCycle, now: ctx.date))
+                            .lineLimit(1)
+                    }
+                }
             }
         }
     }

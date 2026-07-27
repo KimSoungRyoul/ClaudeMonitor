@@ -18,6 +18,10 @@ enum PreviewRenderer {
         // 언어 강제 (CTM_LANG=en|ko)
         if let lng = ProcessInfo.processInfo.environment["CTM_LANG"],
            let al = AppLanguage(rawValue: lng) { state.language = al }
+        // 모델별 주간 한도(f7d) 표시 강제 (CTM_MODELS=0|1) — 두 레이아웃을 모두 캡처하기 위해
+        if let m = ProcessInfo.processInfo.environment["CTM_MODELS"] {
+            state.showModelLimits = (m as NSString).boolValue
+        }
         // 활성 계정을 5h+7d 둘 다 있는 첫 계정으로 (듀얼 링이 보이도록)
         if let first = state.accounts.first { state.activeAccountId = first.id }
         // ScrollView/Menu 는 ImageRenderer 가 그리지 못하므로, 같은 구성요소를
