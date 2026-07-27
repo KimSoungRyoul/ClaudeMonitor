@@ -10,20 +10,15 @@ import AppKit
 
 struct ClaudeMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var state = AppState()
-
-    init() {
-        // WindowManager 에 상태 연결은 onAppear 시점에 (StateObject 접근)
-    }
+    /// AppDelegate(실행 직후 갱신 시작)와 같은 인스턴스를 공유한다.
+    @StateObject private var state = AppState.shared
 
     var body: some Scene {
         MenuBarExtra {
             PopoverView()
                 .environmentObject(state)
-                .onAppear {
-                    WindowManager.shared.attach(state: state)
-                    state.startTimer()
-                }
+                // onAppear 는 팝오버를 열 때마다 발생한다 → 여기서 갱신은 최소 간격으로 스로틀한다.
+                .onAppear { state.onPopoverAppear() }
         } label: {
             Image(nsImage: state.menuBarImage)
         }
@@ -47,8 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             demoState = s
             WindowManager.shared.attach(state: s)
             WindowManager.shared.openDemoPopover()
+            return
         }
         #endif
+        // 팝오버를 한 번도 열지 않아도 메뉴바가 채워지도록 실행 직후 갱신을 시작한다.
+        WindowManager.shared.attach(state: .shared)
+        AppState.shared.start()
     }
 }
 
@@ -64,6 +63,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
     func attach(state: AppState) { self.state = state }
 
+    #if DEBUG
     /// 검증용: 실제 PopoverView 를 fit-to-content 창으로 띄운다 (MenuBarExtra 와 동일한 자동 크기).
     func openDemoPopover() {
         guard let state else { return }
@@ -87,6 +87,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
         demoWindow = window
         bringToFront(window)
     }
+    #endif
 
     func openLogin() {
         guard let state else { return }

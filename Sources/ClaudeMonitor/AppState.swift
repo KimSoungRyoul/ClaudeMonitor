@@ -10,6 +10,9 @@ import Combine
 
 @MainActor
 final class AppState: ObservableObject {
+    /// 앱 본체가 쓰는 단일 상태. AppDelegate(실행 직후 갱신 시작)와 MenuBarExtra 씬이 같은 인스턴스를 봐야 한다.
+    static let shared = AppState()
+
     // MARK: - Published
 
     @Published var accounts: [Account] = []
@@ -46,27 +49,41 @@ final class AppState: ObservableObject {
     // MARK: - Private
 
     private var timer: Timer?
+    /// 진행 중인 새로고침 (재진입 방지 + 취소용)
+    private var refreshTask: Task<Void, Never>?
     private enum Keys {
         static let accounts = "accounts.v1"
         static let activeId = "activeAccountId.v1"
         static let refreshMinutes = "refreshMinutes.v1"
         static let language = "language.v1"
+        static let updateCheckedAt = "updateCheckedAt.v1"
+        static let updateCachedTag = "updateCachedTag.v1"
+        static let updateCachedURL = "updateCachedURL.v1"
     }
+
+    /// 팝오버를 열었을 때 이 간격 안이면 새로고침을 건너뛴다(연속 오픈으로 API 를 두드리지 않게).
+    private static let popoverRefreshMinInterval: TimeInterval = 60
+    /// 업데이트 확인 주기 (하루 1회)
+    private static let updateCheckInterval: TimeInterval = 24 * 60 * 60
 
     var activeAccount: Account? {
         guard let id = activeAccountId else { return accounts.first }
         return accounts.first { $0.id == id } ?? accounts.first
     }
 
-    /// 활성 계정의 사용량 (데모 모드면 샘플)
+    /// 활성 계정의 사용량 (개발 빌드의 데모 모드면 샘플)
     var activeUsage: AccountUsage? {
+        #if DEBUG
         if demoMode { return DemoData.usage(for: activeAccount?.id) }
+        #endif
         guard let id = activeAccount?.id else { return nil }
         return usage[id]
     }
 
     func usage(for account: Account) -> AccountUsage? {
+        #if DEBUG
         if demoMode { return DemoData.usage(for: account.id) }
+        #endif
         return usage[account.id]
     }
 
@@ -98,20 +115,32 @@ final class AppState: ObservableObject {
     private func loadAccounts() {
         guard let data = UserDefaults.standard.data(forKey: Keys.accounts),
               var list = try? JSONDecoder().decode([Account].self, from: data) else { return }
+        // 과거 버전이 데모 계정을 저장해버린 경우 정리한다. 실제 조직 id 는 UUID 라 "demo-" 로 시작할 수 없다.
+        let cleaned = list.filter { !$0.organizationId.hasPrefix("demo-") }
+        if cleaned.count != list.count {
+            list = cleaned
+            if let d = try? JSONEncoder().encode(list) {
+                UserDefaults.standard.set(d, forKey: Keys.accounts)
+            }
+        }
         for i in list.indices {
             list[i].sessionKey = Keychain.get(account: list[i].id.uuidString) ?? ""
         }
         self.accounts = list
-        if let idStr = UserDefaults.standard.string(forKey: Keys.activeId) {
-            self.activeAccountId = UUID(uuidString: idStr)
+        if let idStr = UserDefaults.standard.string(forKey: Keys.activeId),
+           let id = UUID(uuidString: idStr), list.contains(where: { $0.id == id }) {
+            self.activeAccountId = id
         }
     }
 
     private func saveAccounts() {
-        if let data = try? JSONEncoder().encode(accounts) {
+        // 데모 계정은 절대 디스크에 남기지 않는다. (남으면 다음 실행에서 세션 없는 유령 계정이 된다)
+        let real = accounts.filter { !$0.organizationId.hasPrefix("demo-") }
+        if let data = try? JSONEncoder().encode(real) {
             UserDefaults.standard.set(data, forKey: Keys.accounts)
         }
-        UserDefaults.standard.set(activeAccountId?.uuidString, forKey: Keys.activeId)
+        let activeIsReal = real.contains { $0.id == activeAccountId }
+        UserDefaults.standard.set(activeIsReal ? activeAccountId?.uuidString : nil, forKey: Keys.activeId)
     }
 
     // MARK: - 계정 관리
@@ -164,12 +193,15 @@ final class AppState: ObservableObject {
         usage[account.id] = nil
         errors[account.id] = nil
         if activeAccountId == account.id { activeAccountId = accounts.first?.id }
+        saveAccounts()      // 먼저 실제 계정 목록을 확정 저장하고,
+        #if DEBUG
+        // 개발 빌드에서만 계정이 비면 데모로 되돌린다. 릴리즈는 온보딩을 보여준다.
         if accounts.isEmpty {
             demoMode = true
             DemoData.installSampleAccounts(into: self)
             activeAccountId = accounts.first?.id
         }
-        saveAccounts()
+        #endif
         rebuildMenuBarImage()
     }
 
@@ -188,7 +220,19 @@ final class AppState: ObservableObject {
 
     // MARK: - 새로고침
 
+    /// 새로고침. 이미 진행 중이면 그 작업이 끝날 때까지 기다린다(중복 실행 방지).
     func refreshAll() async {
+        if let running = refreshTask {
+            await running.value
+            return
+        }
+        let task = Task { @MainActor in await self.performRefresh() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    private func performRefresh() async {
         guard !demoMode else { rebuildMenuBarImage(); return }
         guard !accounts.isEmpty else { return }
         isRefreshing = true
@@ -225,16 +269,49 @@ final class AppState: ObservableObject {
         rebuildMenuBarImage()
     }
 
-    func startTimer() {
+    /// 앱 실행 직후 1회: 타이머 시작 + 첫 새로고침 + 업데이트 확인.
+    /// (예전에는 팝오버 onAppear 에서만 호출돼, 팝오버를 열기 전까지 메뉴바가 비어 있었다)
+    func start() {
         restartTimer()
+        applyCachedUpdateInfo()
         Task { await refreshAll() }
         Task { await checkForUpdate() }
     }
 
-    /// 최신 릴리즈 확인 → 새 버전이면 updateAvailable 설정
-    func checkForUpdate() async {
+    /// 팝오버를 열었을 때. onAppear 는 열 때마다 발생하므로 최소 간격 안이면 아무것도 하지 않는다.
+    func onPopoverAppear() {
+        if timer == nil { restartTimer() }
+        if let last = lastUpdated, Date().timeIntervalSince(last) < Self.popoverRefreshMinInterval { return }
+        Task { await refreshAll() }
+        Task { await checkForUpdate() }
+    }
+
+    /// 최신 릴리즈 확인 → 새 버전이면 updateAvailable 설정.
+    /// 하루 1회만 네트워크를 쓰고, 결과는 캐시해 재실행 직후에도 배지를 보여준다.
+    func checkForUpdate(force: Bool = false) async {
+        let now = Date()
+        if !force, let last = UserDefaults.standard.object(forKey: Keys.updateCheckedAt) as? Date,
+           now.timeIntervalSince(last) < Self.updateCheckInterval {
+            applyCachedUpdateInfo()
+            return
+        }
         let latest = await UpdateChecker.checkLatest(currentVersion: appVersion)
+        UserDefaults.standard.set(now, forKey: Keys.updateCheckedAt)
+        UserDefaults.standard.set(latest?.tag, forKey: Keys.updateCachedTag)
+        UserDefaults.standard.set(latest?.htmlURL, forKey: Keys.updateCachedURL)
         self.updateAvailable = latest
+    }
+
+    /// 캐시된 릴리즈 정보를 현재 버전과 다시 비교해 배지를 복원한다(네트워크 없음).
+    private func applyCachedUpdateInfo() {
+        guard let tag = UserDefaults.standard.string(forKey: Keys.updateCachedTag),
+              let url = UserDefaults.standard.string(forKey: Keys.updateCachedURL) else { return }
+        let latest = UpdateChecker.parseVersion(tag)
+        guard UpdateChecker.isOlder(UpdateChecker.parseVersion(appVersion), than: latest) else {
+            updateAvailable = nil
+            return
+        }
+        updateAvailable = ReleaseInfo(tag: tag, htmlURL: url, version: latest)
     }
 
     private func restartTimer() {

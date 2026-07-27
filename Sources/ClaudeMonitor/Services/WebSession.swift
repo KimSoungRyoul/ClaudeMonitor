@@ -306,6 +306,14 @@ extension WebSession: WKNavigationDelegate {
         resumeNav(.failure(ClaudeAPIError.network(error.localizedDescription)))
     }
 
+    /// WebContent 프로세스가 죽으면(메모리 압박·크래시) 웹뷰는 빈 상태로 남아 이후 모든 fetch 가 실패한다.
+    /// 다음 요청이 호스트를 다시 띄우도록 상태를 되돌린다.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        FileHandle.standardError.write(Data("WebSession: web content process terminated — will reload host\n".utf8))
+        didLoadHost = false
+        resumeNav(.failure(ClaudeAPIError.network("web content process terminated")))
+    }
+
     private func resumeNav(_ result: Result<Void, Error>) {
         let waiters = navWaiters
         navWaiters.removeAll()
