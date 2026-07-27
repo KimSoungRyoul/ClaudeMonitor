@@ -38,6 +38,16 @@ enum ClaudeAPIError: LocalizedError {
         case .network(let m): return L.s("네트워크 오류: \(m)", "Network error: \(m)")
         }
     }
+
+    /// 잠시 뒤 다시 해볼 가치가 있는 실패인가. 세션 만료·권한 문제는 기다려도 풀리지 않으므로 제외한다.
+    /// (자동 새로고침 백오프 판단에 쓴다)
+    var isTransient: Bool {
+        switch self {
+        case .cloudflareBlocked, .rateLimited, .network, .noData: return true
+        case .http(let code): return code >= 500
+        case .invalidURL, .unauthorized, .decoding: return false
+        }
+    }
 }
 
 actor ClaudeAPI {
@@ -55,7 +65,11 @@ actor ClaudeAPI {
     private func get(path: String, sessionKey: String) async throws -> Data {
         let (status, data) = try await WebSession.shared.request(
             urlString: base + path, sessionKey: sessionKey)
+        return try Self.validate(status: status, data: data)
+    }
 
+    /// 응답 1건의 상태/본문을 검사해 성공 데이터만 돌려준다.
+    static func validate(status: Int, data: Data) throws -> Data {
         // 만일을 위한 HTML(=Cloudflare 챌린지) 응답 감지.
         // (진짜 챌린지는 WebSession 이 이미 걸러 cloudflareBlocked 를 던진다.)
         if let s = String(data: data, encoding: .utf8),
@@ -107,6 +121,66 @@ actor ClaudeAPI {
             overage = try? await fetchOverage(organizationId: organizationId, sessionKey: sessionKey)
         }
         return Self.makeUsage(from: decoded, overage: overage)
+    }
+
+    /// 같은 sessionKey 를 쓰는 여러 조직의 사용량을 한 번의 브라우저 왕복으로 가져온다.
+    /// WebSession 은 요청을 직렬화하므로 계정마다 따로 부르면 계정 수만큼 줄을 서게 된다 —
+    /// usage 는 한 번, Extra Usage 는 임베디드 값이 없는 조직만 모아 한 번 더 부른다(최대 2왕복).
+    func fetchUsages(organizationIds: [String],
+                     sessionKey: String) async -> [String: Result<AccountUsage, ClaudeAPIError>] {
+        guard !organizationIds.isEmpty else { return [:] }
+        var out: [String: Result<AccountUsage, ClaudeAPIError>] = [:]
+
+        do {
+            let responses = try await WebSession.shared.requestMany(
+                urlStrings: organizationIds.map { "\(base)/organizations/\($0)/usage" },
+                sessionKey: sessionKey)
+            guard responses.count == organizationIds.count else { throw ClaudeAPIError.noData }
+
+            var decoded: [String: UsageAPIResponse] = [:]
+            for (org, response) in zip(organizationIds, responses) {
+                do {
+                    let data = try Self.validate(status: response.status, data: response.data)
+                    guard let parsed = try? JSONDecoder().decode(UsageAPIResponse.self, from: data) else {
+                        throw ClaudeAPIError.decoding
+                    }
+                    decoded[org] = parsed
+                } catch let e as ClaudeAPIError {
+                    out[org] = .failure(e)
+                } catch {
+                    out[org] = .failure(.network(error.localizedDescription))
+                }
+            }
+
+            let overages = await fetchOverages(
+                organizationIds: decoded.filter { Self.parseEmbeddedExtra($0.value.extra_usage) == nil }.map(\.key),
+                sessionKey: sessionKey)
+            for (org, parsed) in decoded {
+                out[org] = .success(Self.makeUsage(from: parsed, overage: overages[org] ?? nil))
+            }
+        } catch let e as ClaudeAPIError {
+            for org in organizationIds where out[org] == nil { out[org] = .failure(e) }
+        } catch {
+            for org in organizationIds where out[org] == nil { out[org] = .failure(.network(error.localizedDescription)) }
+        }
+        return out
+    }
+
+    /// Extra Usage 일괄 조회. 실패는 무시한다(옵션 정보라 없으면 안 그린다).
+    private func fetchOverages(organizationIds: [String], sessionKey: String) async -> [String: ExtraUsage?] {
+        guard !organizationIds.isEmpty else { return [:] }
+        guard let responses = try? await WebSession.shared.requestMany(
+                urlStrings: organizationIds.map { "\(base)/organizations/\($0)/overage_spend_limit" },
+                sessionKey: sessionKey),
+              responses.count == organizationIds.count else { return [:] }
+
+        var out: [String: ExtraUsage?] = [:]
+        for (org, response) in zip(organizationIds, responses) {
+            guard let data = try? Self.validate(status: response.status, data: response.data),
+                  let parsed = try? JSONDecoder().decode(OverageAPIResponse.self, from: data) else { continue }
+            out[org] = Self.parseOverage(parsed)
+        }
+        return out
     }
 
     /// Extra Usage 단독 조회 (Pro/Team)
