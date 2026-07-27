@@ -101,37 +101,48 @@ actor ClaudeAPI {
             throw ClaudeAPIError.decoding
         }
 
-        // 임베디드 extra_usage(Enterprise) 우선, 없으면 별도 overage 엔드포인트(Pro/Team)
-        var extra = parseEmbeddedExtra(decoded.extra_usage)
-        if extra == nil {
-            extra = try? await fetchOverage(organizationId: organizationId, sessionKey: sessionKey)
+        // 임베디드 extra_usage(Enterprise)가 없을 때만 별도 overage 엔드포인트(Pro/Team)를 부른다.
+        var overage: ExtraUsage?
+        if Self.parseEmbeddedExtra(decoded.extra_usage) == nil {
+            overage = try? await fetchOverage(organizationId: organizationId, sessionKey: sessionKey)
         }
-
-        return AccountUsage(
-            fiveHour: parseLimit(decoded.five_hour),
-            sevenDay: parseLimit(decoded.seven_day),
-            models: parseModelLimits(decoded.limits),
-            extra: extra
-        )
-    }
-
-    /// `limits` 배열에서 모델별(weekly_scoped) 한도를 뽑아낸다.
-    /// 예: Fable → `scope.model.display_name == "Fable"`. API 순서를 유지한다.
-    private func parseModelLimits(_ limits: [UsageAPIResponse.LimitEntry]?) -> [ModelLimit] {
-        guard let limits else { return [] }
-        return limits.compactMap { entry in
-            guard entry.kind == "weekly_scoped",
-                  let name = entry.scope?.model?.display_name, !name.isEmpty,
-                  let pct = entry.percent else { return nil }
-            return ModelLimit(name: name,
-                              usage: LimitUsage(percentage: pct, resetsAt: Self.parseDate(entry.resets_at)))
-        }
+        return Self.makeUsage(from: decoded, overage: overage)
     }
 
     /// Extra Usage 단독 조회 (Pro/Team)
     private func fetchOverage(organizationId: String, sessionKey: String) async throws -> ExtraUsage? {
         guard let data = try? await get(path: "/organizations/\(organizationId)/overage_spend_limit", sessionKey: sessionKey) else { return nil }
         guard let r = try? JSONDecoder().decode(OverageAPIResponse.self, from: data) else { return nil }
+        return Self.parseOverage(r)
+    }
+
+    // MARK: - 파싱 (네트워크가 없는 순수 함수 — 테스트 대상)
+
+    /// usage 응답(+ 필요 시 별도 overage 결과) → 앱 내부 모델
+    static func makeUsage(from decoded: UsageAPIResponse, overage: ExtraUsage?) -> AccountUsage {
+        AccountUsage(
+            fiveHour: parseLimit(decoded.five_hour),
+            sevenDay: parseLimit(decoded.seven_day),
+            models: parseModelLimits(decoded.limits),
+            extra: parseEmbeddedExtra(decoded.extra_usage) ?? overage
+        )
+    }
+
+    /// `limits` 배열에서 모델별(weekly_scoped) 한도를 뽑아낸다.
+    /// 예: Fable → `scope.model.display_name == "Fable"`. API 순서를 유지한다.
+    static func parseModelLimits(_ limits: [UsageAPIResponse.LimitEntry]?) -> [ModelLimit] {
+        guard let limits else { return [] }
+        return limits.compactMap { entry in
+            guard entry.kind == "weekly_scoped",
+                  let name = entry.scope?.model?.display_name, !name.isEmpty,
+                  let pct = entry.percent else { return nil }
+            return ModelLimit(name: name,
+                              usage: LimitUsage(percentage: pct, resetsAt: parseDate(entry.resets_at)))
+        }
+    }
+
+    /// overage 엔드포인트 응답 → Extra Usage (센트 단위 → 통화 단위)
+    static func parseOverage(_ r: OverageAPIResponse) -> ExtraUsage? {
         let limitCents = r.monthly_limit ?? r.monthly_credit_limit
         let enabled = r.is_enabled ?? ((limitCents ?? 0) > 0)
         guard enabled, let limitCents, limitCents > 0 else { return nil }
@@ -143,9 +154,7 @@ actor ClaudeAPI {
         )
     }
 
-    // MARK: - 파싱 헬퍼
-
-    private func parseEmbeddedExtra(_ e: UsageAPIResponse.EmbeddedExtraUsage?) -> ExtraUsage? {
+    static func parseEmbeddedExtra(_ e: UsageAPIResponse.EmbeddedExtraUsage?) -> ExtraUsage? {
         guard let e else { return nil }
         let enabled = e.is_enabled ?? ((e.monthly_limit ?? 0) > 0)
         guard enabled, let limitCents = e.monthly_limit, limitCents > 0 else { return nil }
@@ -157,12 +166,12 @@ actor ClaudeAPI {
         )
     }
 
-    private func parseLimit(_ l: UsageAPIResponse.LimitUsage?) -> LimitUsage? {
+    static func parseLimit(_ l: UsageAPIResponse.LimitUsage?) -> LimitUsage? {
         guard let l else { return nil }
-        return LimitUsage(percentage: l.utilization, resetsAt: Self.parseDate(l.resets_at))
+        return LimitUsage(percentage: l.utilization, resetsAt: parseDate(l.resets_at))
     }
 
-    private static func parseDate(_ s: String?) -> Date? {
+    static func parseDate(_ s: String?) -> Date? {
         guard let s else { return nil }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
