@@ -19,6 +19,8 @@ enum WebSessionProbe {
 
         let key = ProcessInfo.processInfo.environment["CTM_TEST_KEY"] ?? "sk-ant-sid01-invalid-probe-key"
         let url = "https://claude.ai/api/organizations"
+        /// 측정용 유지 시간 (CTM_PROBE_HOLD=<초>). 안전장치 타임아웃은 이보다 길어야 한다.
+        let hold = ProcessInfo.processInfo.environment["CTM_PROBE_HOLD"].flatMap(Double.init) ?? 0
 
         Task { @MainActor in
             print("PROBE: requesting \(url) (key=\(key.prefix(16))…)")
@@ -66,16 +68,18 @@ enum WebSessionProbe {
                 WebSession.shared.debugTeardownNow()
                 print("PROBE: after teardown → \(WebSession.shared.hostWindowDiagnostics)")
             }
-            // CTM_PROBE_HOLD=<초>: 프로세스를 살려둬 WebKit 프로세스 메모리를 재는 용도.
-            if let hold = ProcessInfo.processInfo.environment["CTM_PROBE_HOLD"].flatMap(Double.init) {
+            // CTM_PROBE_HOLD=<초>: 프로세스를 살려둬 유휴 정리/메모리 반납을 관찰하는 용도.
+            if hold > 0 {
                 print("PROBE: holding \(Int(hold))s for measurement…")
                 try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
+                print("PROBE: after hold → \(WebSession.shared.hostWindowDiagnostics)")
             }
             exit(0)
         }
-        // 안전장치: 무한 대기 방지
+        // 안전장치: 무한 대기 방지. 측정용 유지 시간(CTM_PROBE_HOLD)보다 길어야
+        // 관찰 도중에 프로세스를 죽이지 않는다.
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64((60 + hold) * 1_000_000_000))
             print("PROBE: timeout")
             exit(2)
         }
