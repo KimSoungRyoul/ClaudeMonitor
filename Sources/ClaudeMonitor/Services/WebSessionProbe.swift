@@ -49,8 +49,27 @@ enum WebSessionProbe {
                 } else {
                     print("PROBE: ✅ RE-PARKED OFFSCREEN")
                 }
+
+                // 배치 요청(Promise.all): 여러 URL 이 한 번의 왕복으로 순서대로 돌아오는지
+                let batch = try await WebSession.shared.requestMany(
+                    urlStrings: ["https://claude.ai/api/organizations",
+                                 "https://claude.ai/api/organizations?probe=2"],
+                    sessionKey: key)
+                print("PROBE: batch statuses=\(batch.map(\.status)) sizes=\(batch.map(\.data.count))")
+                print(batch.count == 2 ? "PROBE: ✅ BATCH OK (one round trip, ordered)"
+                                       : "PROBE: ❌ BATCH returned \(batch.count) results")
             } catch {
                 print("PROBE: error: \(error)")
+            }
+            // 유휴 정리: 웹뷰/호스트 윈도우(그리고 WebKit 프로세스들)가 실제로 반납되는지
+            if ProcessInfo.processInfo.environment["CTM_PROBE_TEARDOWN"] != "0" {
+                WebSession.shared.debugTeardownNow()
+                print("PROBE: after teardown → \(WebSession.shared.hostWindowDiagnostics)")
+            }
+            // CTM_PROBE_HOLD=<초>: 프로세스를 살려둬 WebKit 프로세스 메모리를 재는 용도.
+            if let hold = ProcessInfo.processInfo.environment["CTM_PROBE_HOLD"].flatMap(Double.init) {
+                print("PROBE: holding \(Int(hold))s for measurement…")
+                try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
             }
             exit(0)
         }

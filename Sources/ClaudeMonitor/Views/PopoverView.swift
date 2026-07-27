@@ -107,11 +107,32 @@ struct PopoverView: View {
     // MARK: - Footer
 
     private var footer: some View {
+        VStack(spacing: 0) {
+            if let warning = state.storageWarning {
+                HStack(spacing: 5) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9))
+                    Text(warning).font(.system(size: 10)).lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Color(hex: 0xE0A500))
+                .padding(.horizontal, 14).padding(.vertical, 6)
+                .background(Color(hex: 0xE0A500).opacity(0.12))
+            }
+            statusBar
+        }
+    }
+
+    private var statusBar: some View {
         HStack(spacing: 6) {
-            Circle().fill(state.isRefreshing ? Color.orange : Color.green).frame(width: 6, height: 6)
+            Circle().fill(statusDotColor).frame(width: 6, height: 6)
             if let updated = state.lastUpdated {
-                Text(L.s("업데이트 \(TimeFmt.timeString(updated))", "Updated \(TimeFmt.timeString(updated))"))
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                // 조회가 계속 실패하는 동안 낡은 값을 최신처럼 보여주지 않는다.
+                Text(state.isStale
+                     ? L.s("업데이트 \(TimeFmt.timeString(updated)) · 오래된 값",
+                           "Updated \(TimeFmt.timeString(updated)) · stale")
+                     : L.s("업데이트 \(TimeFmt.timeString(updated))", "Updated \(TimeFmt.timeString(updated))"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(state.isStale ? Color(hex: 0xE0A500) : Color.secondary)
             } else if state.demoMode {
                 Text(L.s("데모 데이터 — 메뉴 ‘…’에서 로그인", "Demo data — log in from the ‘…’ menu"))
                     .font(.system(size: 10)).foregroundStyle(.secondary)
@@ -139,6 +160,11 @@ struct PopoverView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(.thinMaterial)
+    }
+
+    private var statusDotColor: Color {
+        if state.isRefreshing { return .orange }
+        return state.isStale ? Color(hex: 0xE0A500) : .green
     }
 }
 

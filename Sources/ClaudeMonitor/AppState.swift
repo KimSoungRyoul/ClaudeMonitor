@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
     /// 새 버전(있으면 다운로드 제안)
     @Published var updateAvailable: ReleaseInfo?
 
+    /// 저장소 문제(키체인 쓰기 실패, 설정 손상 등) — 조용히 삼키지 않고 UI 에 띄운다.
+    @Published var storageWarning: String?
+
     /// 현재 앱 버전 (Info.plist 우선, 없으면 기본값)
     let appVersion: String = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
 
@@ -51,20 +54,30 @@ final class AppState: ObservableObject {
     private var timer: Timer?
     /// 진행 중인 새로고침 (재진입 방지 + 취소용)
     private var refreshTask: Task<Void, Never>?
+    /// 연속 실패 횟수 (백오프 계산용)
+    private var consecutiveFailures = 0
+    /// 백오프 중이면 이 시각 전에는 자동 새로고침을 건너뛴다. (수동 새로고침은 무시하고 바로 시도)
+    private var nextAutoRefreshAllowedAt: Date?
+
     private enum Keys {
         static let accounts = "accounts.v1"
+        static let accountsCorrupt = "accounts.v1.corrupt"
         static let activeId = "activeAccountId.v1"
         static let refreshMinutes = "refreshMinutes.v1"
         static let language = "language.v1"
         static let updateCheckedAt = "updateCheckedAt.v1"
         static let updateCachedTag = "updateCachedTag.v1"
         static let updateCachedURL = "updateCachedURL.v1"
+        static let usageCache = "usageCache.v1"
+        static let usageCachedAt = "usageCachedAt.v1"
     }
 
     /// 팝오버를 열었을 때 이 간격 안이면 새로고침을 건너뛴다(연속 오픈으로 API 를 두드리지 않게).
     private static let popoverRefreshMinInterval: TimeInterval = 60
     /// 업데이트 확인 주기 (하루 1회)
     private static let updateCheckInterval: TimeInterval = 24 * 60 * 60
+    /// 백오프 상한 (연속 실패가 이어져도 이보다 오래 쉬지는 않는다)
+    private static let maxBackoff: TimeInterval = 30 * 60
 
     var activeAccount: Account? {
         guard let id = activeAccountId else { return accounts.first }
@@ -107,7 +120,14 @@ final class AppState: ObservableObject {
         _ = demo
         #endif
         if activeAccountId == nil { activeAccountId = accounts.first?.id }
+        loadUsageCache()        // 첫 조회가 끝나기 전에도 지난 값을 보여준다
         rebuildMenuBarImage()
+    }
+
+    /// 마지막 갱신이 너무 오래됐는가 (조회가 계속 실패하는 동안 낡은 값을 최신처럼 보여주지 않기 위해).
+    var isStale: Bool {
+        guard let lastUpdated else { return !usage.isEmpty }
+        return Date().timeIntervalSince(lastUpdated) > max(TimeInterval(refreshMinutes * 60) * 2, 15 * 60)
     }
 
     // MARK: - 영속화
@@ -125,8 +145,14 @@ final class AppState: ObservableObject {
     }
 
     private func loadAccounts() {
-        guard let data = UserDefaults.standard.data(forKey: Keys.accounts),
-              var list = try? JSONDecoder().decode([Account].self, from: data) else { return }
+        guard let data = UserDefaults.standard.data(forKey: Keys.accounts) else { return }
+        guard var list = try? JSONDecoder().decode([Account].self, from: data) else {
+            // 손상된 설정을 조용히 덮어쓰면 계정이 통째로 사라진다. 원본은 남기고 사용자에게 알린다.
+            UserDefaults.standard.set(data, forKey: Keys.accountsCorrupt)
+            storageWarning = L.s("저장된 계정 정보를 읽지 못했습니다. 다시 로그인해 주세요.",
+                                 "Could not read the saved accounts. Please log in again.")
+            return
+        }
         let cleaned = Self.sanitizeLoaded(list)
         if cleaned.count != list.count {
             list = cleaned
@@ -168,18 +194,19 @@ final class AppState: ObservableObject {
                 activeAccountId = nil
             }
             var added = 0
+            var keychainFailed = false
             for org in orgs {
                 if let idx = accounts.firstIndex(where: { $0.organizationId == org.uuid }) {
                     accounts[idx].sessionKey = sessionKey
                     accounts[idx].organizationName = org.name
                     accounts[idx].planRaw = org.plan.rawValue
-                    Keychain.set(sessionKey, account: accounts[idx].id.uuidString)
+                    if !Keychain.set(sessionKey, account: accounts[idx].id.uuidString) { keychainFailed = true }
                 } else {
                     let acc = Account(organizationId: org.uuid,
                                       organizationName: org.name,
                                       plan: org.plan,
                                       sessionKey: sessionKey)
-                    Keychain.set(sessionKey, account: acc.id.uuidString)
+                    if !Keychain.set(sessionKey, account: acc.id.uuidString) { keychainFailed = true }
                     accounts.append(acc)
                     added += 1
                 }
@@ -187,6 +214,11 @@ final class AppState: ObservableObject {
             if activeAccountId == nil || !accounts.contains(where: { $0.id == activeAccountId }) {
                 activeAccountId = accounts.first?.id
             }
+            // 키체인 쓰기 실패를 삼키면 다음 실행에서 세션이 사라진 채로 뜬다.
+            storageWarning = keychainFailed
+                ? L.s("키체인에 세션을 저장하지 못했습니다. 앱을 다시 켜면 로그인이 필요합니다.",
+                      "Could not save the session to the Keychain. You will need to log in again after a restart.")
+                : nil
             saveAccounts()
             await refreshAll()
             return .success(added)
@@ -231,11 +263,13 @@ final class AppState: ObservableObject {
     // MARK: - 새로고침
 
     /// 새로고침. 이미 진행 중이면 그 작업이 끝날 때까지 기다린다(중복 실행 방지).
-    func refreshAll() async {
+    /// - Parameter automatic: 타이머/팝오버가 부른 호출. 백오프 중이면 건너뛴다(사용자가 누른 새로고침은 항상 실행).
+    func refreshAll(automatic: Bool = false) async {
         if let running = refreshTask {
             await running.value
             return
         }
+        if automatic, let until = nextAutoRefreshAllowedAt, Date() < until { return }
         let task = Task { @MainActor in await self.performRefresh() }
         refreshTask = task
         await task.value
@@ -243,40 +277,81 @@ final class AppState: ObservableObject {
     }
 
     private func performRefresh() async {
-        guard !demoMode else { rebuildMenuBarImage(); return }
+        #if DEBUG
+        if demoMode { rebuildMenuBarImage(); return }
+        #endif
         guard !accounts.isEmpty else { return }
         isRefreshing = true
         defer { isRefreshing = false }
 
-        await withTaskGroup(of: (UUID, Result<AccountUsage, ClaudeAPIError>).self) { group in
-            for account in accounts {
-                let id = account.id
-                let org = account.organizationId
-                let key = account.sessionKey
-                group.addTask {
-                    guard !key.isEmpty else { return (id, .failure(.unauthorized)) }
-                    do {
-                        let u = try await ClaudeAPI.shared.fetchUsage(organizationId: org, sessionKey: key)
-                        return (id, .success(u))
-                    } catch let e as ClaudeAPIError {
-                        return (id, .failure(e))
-                    } catch {
-                        return (id, .failure(.network(error.localizedDescription)))
-                    }
-                }
-            }
-            for await (id, result) in group {
-                switch result {
+        // 같은 sessionKey 를 쓰는 조직끼리 묶어 한 번의 브라우저 왕복으로 조회한다.
+        // (WebSession 은 요청을 직렬화하므로, 계정마다 따로 부르면 계정 수만큼 줄을 서게 된다)
+        var groups: [String: [Account]] = [:]
+        for account in accounts where !account.sessionKey.isEmpty {
+            groups[account.sessionKey, default: []].append(account)
+        }
+        for account in accounts where account.sessionKey.isEmpty {
+            errors[account.id] = ClaudeAPIError.unauthorized.errorDescription
+        }
+
+        var transientFailure = false
+        for (key, group) in groups {
+            let results = await ClaudeAPI.shared.fetchUsages(
+                organizationIds: group.map(\.organizationId), sessionKey: key)
+            for account in group {
+                switch results[account.organizationId] {
                 case .success(let u):
-                    usage[id] = u
-                    errors[id] = nil
+                    usage[account.id] = u
+                    errors[account.id] = nil
                 case .failure(let e):
-                    errors[id] = e.errorDescription
+                    errors[account.id] = e.errorDescription
+                    if e.isTransient { transientFailure = true }
+                case nil:
+                    errors[account.id] = ClaudeAPIError.noData.errorDescription
+                    transientFailure = true
                 }
             }
         }
+
+        applyBackoff(failed: transientFailure)
         lastUpdated = Date()
+        saveUsageCache()
         rebuildMenuBarImage()
+    }
+
+    /// 차단/과호출/서버 오류가 이어지면 자동 새로고침 간격을 지수적으로 늘린다.
+    /// (실패했는데도 5분마다 계속 두드리면 차단만 길어진다)
+    private func applyBackoff(failed: Bool) {
+        guard failed else {
+            consecutiveFailures = 0
+            nextAutoRefreshAllowedAt = nil
+            return
+        }
+        consecutiveFailures += 1
+        let base = TimeInterval(max(1, refreshMinutes) * 60)
+        let delay = min(Self.maxBackoff, base * pow(2, Double(min(consecutiveFailures, 5))))
+        nextAutoRefreshAllowedAt = Date().addingTimeInterval(delay)
+    }
+
+    // MARK: - 사용량 캐시 (재시작 직후 빈 화면 방지)
+
+    private func saveUsageCache() {
+        let snapshot = Dictionary(uniqueKeysWithValues: usage.map { ($0.key.uuidString, $0.value) })
+        if let data = try? JSONEncoder().encode(snapshot) {
+            UserDefaults.standard.set(data, forKey: Keys.usageCache)
+            UserDefaults.standard.set(lastUpdated, forKey: Keys.usageCachedAt)
+        }
+    }
+
+    private func loadUsageCache() {
+        guard let data = UserDefaults.standard.data(forKey: Keys.usageCache),
+              let snapshot = try? JSONDecoder().decode([String: AccountUsage].self, from: data) else { return }
+        let known = Set(accounts.map(\.id))
+        for (idString, value) in snapshot {
+            guard let id = UUID(uuidString: idString), known.contains(id) else { continue }
+            usage[id] = value
+        }
+        lastUpdated = UserDefaults.standard.object(forKey: Keys.usageCachedAt) as? Date
     }
 
     /// 앱 실행 직후 1회: 타이머 시작 + 첫 새로고침 + 업데이트 확인.
@@ -292,7 +367,7 @@ final class AppState: ObservableObject {
     func onPopoverAppear() {
         if timer == nil { restartTimer() }
         if let last = lastUpdated, Date().timeIntervalSince(last) < Self.popoverRefreshMinInterval { return }
-        Task { await refreshAll() }
+        Task { await refreshAll(automatic: true) }
         Task { await checkForUpdate() }
     }
 
@@ -328,7 +403,7 @@ final class AppState: ObservableObject {
         timer?.invalidate()
         let interval = TimeInterval(max(1, refreshMinutes) * 60)
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refreshAll() }
+            Task { @MainActor in await self?.refreshAll(automatic: true) }
         }
     }
 

@@ -123,7 +123,7 @@ struct APIErrorResponse: Codable, Sendable {
 // MARK: - 앱 내부 정규화 모델
 
 /// 단일 한도(5시간/7일/모델별)의 사용량
-struct LimitUsage: Sendable, Equatable {
+struct LimitUsage: Codable, Sendable, Equatable {
     /// 사용률 0~100
     let percentage: Double
     /// 리셋 시각 (없으면 아직 사용 시작 전)
@@ -131,7 +131,7 @@ struct LimitUsage: Sendable, Equatable {
 }
 
 /// 모델별 주간 한도 (예: Fable/Opus/Sonnet). API `limits` 의 weekly_scoped 항목에서 나온다.
-struct ModelLimit: Sendable, Equatable, Identifiable {
+struct ModelLimit: Codable, Sendable, Equatable, Identifiable {
     /// 모델 표시 이름 (API 의 scope.model.display_name)
     let name: String
     let usage: LimitUsage
@@ -142,7 +142,7 @@ struct ModelLimit: Sendable, Equatable, Identifiable {
 }
 
 /// Extra Usage(추가 결제 사용액)
-struct ExtraUsage: Sendable, Equatable {
+struct ExtraUsage: Codable, Sendable, Equatable {
     let enabled: Bool
     let used: Double      // 통화 단위 (달러 등)
     let limit: Double
@@ -176,7 +176,7 @@ struct ExtraUsage: Sendable, Equatable {
 }
 
 /// 한 계정(조직)의 전체 사용량 스냅샷
-struct AccountUsage: Sendable, Equatable {
+struct AccountUsage: Codable, Sendable, Equatable {
     let fiveHour: LimitUsage?
     let sevenDay: LimitUsage?
     /// 모델별 주간 한도 (Fable 등). API 가 주는 순서를 유지한다.

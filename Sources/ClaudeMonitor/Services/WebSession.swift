@@ -27,8 +27,18 @@ final class WebSession: NSObject {
     private static let userAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 
-    /// 챌린지 통과 컨텍스트를 유지하기 위한 항상 떠 있는 호스트 페이지.
-    private static let hostURL = "https://claude.ai/"
+    /// 챌린지 통과 컨텍스트를 유지하기 위한 호스트 페이지.
+    ///
+    /// claude.ai 앱 페이지(`/`)를 띄우면 React SPA 가 통째로 상주해 WebContent 프로세스만 ~485MB 를 쓴다.
+    /// 우리에게 필요한 건 "claude.ai 오리진의 문서"뿐이라 가장 가벼운 정적 문서를 쓴다.
+    /// Cloudflare clearance 는 오리진 단위라 이 경로로 받아도 `/api/*` 에 그대로 적용된다.
+    /// (측정: `/` → 698MB, `/robots.txt` → 148MB. 둘 다 프로브에서 JSON 403 응답 확인)
+    private static var hostURL: String {
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["CTM_HOST_URL"] { return override }
+        #endif
+        return "https://claude.ai/robots.txt"
+    }
 
     /// 호스트 페이지 뷰포트 크기(일반 브라우저 창과 비슷하게).
     private static let hostSize = NSSize(width: 1024, height: 768)
@@ -39,6 +49,12 @@ final class WebSession: NSObject {
 
     /// 호스트 윈도우가 화면 안으로 끌려오는 것을 되돌리기 위한 알림 관찰자들.
     private var offscreenObservers: [NSObjectProtocol] = []
+
+    /// 마지막 요청 후 이 시간이 지나면 웹뷰를 정리한다.
+    /// 살아 있는 WKWebView 는 WebContent/GPU/Networking 프로세스를 물고 있어(수백 MB) 메뉴바 앱에는 과하다.
+    /// 기본 새로고침 주기(5분)보다 짧게 잡아 갱신 사이에는 항상 반납되도록 한다.
+    private static let idleTeardownDelay: TimeInterval = 120
+    private var teardownTask: Task<Void, Never>?
 
     // 네비게이션 완료 대기용 연속체
     private var navWaiters: [CheckedContinuation<Void, Error>] = []
@@ -54,8 +70,22 @@ final class WebSession: NSObject {
     /// 절대 URL 로 GET 요청을 보내고 (HTTP 상태코드, 본문) 을 돌려준다.
     /// Cloudflare 챌린지가 안 풀렸으면 잠시 기다렸다 재시도하고, 끝내 막히면 cloudflareBlocked 를 던진다.
     func request(urlString: String, sessionKey: String) async throws -> (status: Int, data: Data) {
+        guard let first = try await requestMany(urlStrings: [urlString], sessionKey: sessionKey).first else {
+            throw ClaudeAPIError.noData
+        }
+        return first
+    }
+
+    /// 여러 URL 을 페이지 안에서 한 번에(Promise.all) 가져온다.
+    /// 요청 하나하나가 이 락에 줄을 서므로, 계정이 여러 개일 때는 묶어 부르는 쪽이 훨씬 빠르다.
+    func requestMany(urlStrings: [String], sessionKey: String) async throws -> [(status: Int, data: Data)] {
+        guard !urlStrings.isEmpty else { return [] }
+        teardownTask?.cancel()
         await lock()
-        defer { unlock() }
+        defer {
+            unlock()
+            scheduleIdleTeardown()
+        }
 
         try await ensureHostLoaded()
         parkOffscreen()      // 알림을 놓쳐 화면 안으로 끌려간 경우 대비(호출마다 자기치유)
@@ -67,11 +97,12 @@ final class WebSession: NSObject {
         var lastError: Error?
         for attempt in 0..<10 {
             do {
-                let (status, body) = try await rawFetch(urlString)
-                if !looksLikeChallenge(body) {
-                    return (status, Data(body.utf8))
+                let results = try await rawFetchMany(urlStrings)
+                if let challenged = results.first(where: { looksLikeChallenge($0.body) }) {
+                    lastBody = challenged.body      // 하나라도 챌린지면 전부 다시 (같은 컨텍스트라 같이 풀린다)
+                } else {
+                    return results.map { (status: $0.status, data: Data($0.body.utf8)) }
                 }
-                lastBody = body
             } catch {
                 // 일시적 JS/네트워크 예외 → 재시도
                 lastError = error
@@ -138,6 +169,36 @@ final class WebSession: NSObject {
         observeOffscreenBreakage()
     }
 
+    // MARK: - 유휴 시 정리
+
+    /// 마지막 요청 뒤 일정 시간이 지나면 웹뷰와 호스트 윈도우를 반납한다.
+    /// 비영속 저장소라 다음 요청은 챌린지를 다시 통과해야 하지만(보통 수 초), 그 대가로
+    /// 갱신 사이에는 WebKit 프로세스가 아예 남지 않는다.
+    private func scheduleIdleTeardown() {
+        teardownTask?.cancel()
+        teardownTask = Task { @MainActor [weak self] in
+            try? await Self.sleep(seconds: Self.idleTeardownDelay)
+            guard let self, !Task.isCancelled, !self.locked else { return }
+            self.teardownHost()
+        }
+    }
+
+    private func teardownHost() {
+        guard webView != nil || hostWindow != nil else { return }
+        // 정리는 요청이 없을 때만 하지만, 혹시 남은 네비게이션 대기자가 있으면 영원히 매달리지 않게 깨운다.
+        resumeNav(.failure(ClaudeAPIError.network("host torn down")))
+        for token in offscreenObservers { NotificationCenter.default.removeObserver(token) }
+        offscreenObservers.removeAll()
+        webView?.navigationDelegate = nil
+        webView?.stopLoading()
+        hostWindow?.contentView = nil
+        hostWindow?.orderOut(nil)
+        hostWindow?.close()
+        webView = nil
+        hostWindow = nil
+        didLoadHost = false
+    }
+
     // MARK: - 호스트 윈도우 숨김 유지
 
     /// 어떤 디스플레이와도 겹치지 않는 좌표. 화면 배치가 바뀌면 다시 계산한다.
@@ -181,6 +242,12 @@ final class WebSession: NSObject {
     var hostWindowVisibleToUser: Bool {
         guard let w = hostWindow else { return false }
         return w.isVisible && w.alphaValue > 0.01 && Self.intersectsAnyScreen(w.frame)
+    }
+
+    /// 검증용: 유휴 정리를 즉시 실행한다 (WebKit 프로세스가 실제로 반납되는지 확인).
+    func debugTeardownNow() {
+        teardownTask?.cancel()
+        teardownHost()
     }
 
     /// 검증용: OS 가 윈도우를 보이는 화면으로 끌어온 상황을 재현해 재주차 동작을 확인한다.
@@ -227,33 +294,38 @@ final class WebSession: NSObject {
         await store.setCookie(cookie)
     }
 
-    /// 페이지 컨텍스트에서 same-origin fetch 를 실행하고 (상태코드, 본문문자열) 을 반환.
-    private func rawFetch(_ urlString: String) async throws -> (Int, String) {
+    /// 페이지 컨텍스트에서 same-origin fetch 들을 병렬 실행하고 [(상태코드, 본문)] 을 URL 순서대로 반환.
+    private func rawFetchMany(_ urlStrings: [String]) async throws -> [(status: Int, body: String)] {
         guard let webView else { throw ClaudeAPIError.network("no webview") }
         let js = """
-        const resp = await fetch(url, {
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store',
-            headers: {
-                'accept': '*/*',
-                'content-type': 'application/json',
-                'anthropic-client-platform': 'web_claude_ai',
-                'anthropic-client-version': '1.0.0'
-            }
-        });
-        const body = await resp.text();
-        return { status: resp.status, body: body };
+        const results = await Promise.all(urls.map(async (u) => {
+            const resp = await fetch(u, {
+                method: 'GET',
+                credentials: 'include',
+                cache: 'no-store',
+                headers: {
+                    'accept': '*/*',
+                    'content-type': 'application/json',
+                    'anthropic-client-platform': 'web_claude_ai',
+                    'anthropic-client-version': '1.0.0'
+                }
+            });
+            return { status: resp.status, body: await resp.text() };
+        }));
+        return results;
         """
         do {
             let result = try await webView.callAsyncJavaScript(
-                js, arguments: ["url": urlString], in: nil, contentWorld: .page)
-            guard let dict = result as? [String: Any],
-                  let status = dict["status"] as? Int,
-                  let body = dict["body"] as? String else {
+                js, arguments: ["urls": urlStrings], in: nil, contentWorld: .page)
+            guard let array = result as? [[String: Any]], array.count == urlStrings.count else {
                 throw ClaudeAPIError.network("bad fetch result")
             }
-            return (status, body)
+            return try array.map { dict in
+                guard let status = dict["status"] as? Int, let body = dict["body"] as? String else {
+                    throw ClaudeAPIError.network("bad fetch result")
+                }
+                return (status, body)
+            }
         } catch let e as ClaudeAPIError {
             throw e
         } catch {
