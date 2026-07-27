@@ -5,6 +5,9 @@
 //  팝오버 UI 를 데모 데이터로 PNG 로 렌더링한다. (헤드리스 빌드 검증/스크린샷용)
 //
 
+// 개발 빌드 전용: 릴리즈 바이너리에는 포함되지 않는다.
+#if DEBUG
+
 import SwiftUI
 import AppKit
 
@@ -81,3 +84,5 @@ private struct PreviewHeader: View {
         .padding(.horizontal, 14).padding(.vertical, 11)
     }
 }
+
+#endif

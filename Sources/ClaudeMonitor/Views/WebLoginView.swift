@@ -69,7 +69,7 @@ struct WebLoginView: View {
         case .success(let n):
             status = L.s("✅ \(n)개 계정 추가됨 (총 \(state.accounts.count)개). 창을 닫아도 됩니다.",
                          "✅ Added \(n) account(s) (\(state.accounts.count) total). You can close this window.")
-            state.startTimer()
+            // 타이머는 실행 직후(AppState.start)부터 돌고 있고, addAccounts 가 이미 새로고침까지 마쳤다.
         case .failure(let e):
             status = "⚠️ \(e.errorDescription ?? L.s("실패", "failed"))"
         }

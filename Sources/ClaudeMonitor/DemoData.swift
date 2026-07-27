@@ -6,6 +6,9 @@
 //  스크린샷의 샘플 A / 샘플 B / 샘플 C / 샘플 D 구성을 본떴다.
 //
 
+// 개발 빌드 전용: 릴리즈 바이너리에는 포함되지 않는다.
+#if DEBUG
+
 import Foundation
 
 enum DemoData {
@@ -71,3 +74,5 @@ enum DemoData {
         }
     }
 }
+
+#endif
