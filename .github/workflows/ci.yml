@@ -34,7 +34,7 @@ jobs:
 
       - name: Release binary must not contain dev-only code
         run: |
-          if nm -a .build/release/ClaudeMonitor | grep -q -e DemoData -e PreviewRenderer; then
+          if nm -a .build/release/ClaudeMonitor | grep -q -e DemoData -e PreviewRenderer -e KeychainProbe; then
             echo "::error::release binary contains DEBUG-only types"; exit 1
           fi
           if strings -a .build/release/ClaudeMonitor | grep -q -e "데모" -e "Demo mode"; then

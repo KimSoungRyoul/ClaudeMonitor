@@ -29,6 +29,12 @@ enum EntryPoint {
             }
             return
         }
+        // 개발 전용: 세션 저장소 검증 (항목 1개 유지 + 레거시 계정별 항목 마이그레이션).
+        // 사용법: CTM_KEYCHAIN_TEST=1 ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_KEYCHAIN_TEST"] != nil {
+            KeychainProbe.run()
+            return
+        }
         // 개발 전용: usage API 응답 원본 JSON 덤프 (필드명 확인용).
         // 사용법: CTM_USAGE_DUMP=1 CTM_TEST_KEY=sk-ant-... ./.build/debug/ClaudeMonitor
         if ProcessInfo.processInfo.environment["CTM_USAGE_DUMP"] != nil {

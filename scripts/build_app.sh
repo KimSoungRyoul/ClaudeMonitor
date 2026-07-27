@@ -57,8 +57,18 @@ PLIST
 # PkgInfo
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
 
-echo "==> ad-hoc code signing"
-codesign --force --deep --sign - "$APP_DIR"
+# 서명 정체성. 기본은 ad-hoc("-") 이고, 그러면 빌드마다 cdhash 가 달라져 키체인 항목의 ACL 과
+# 어긋나므로 재설치할 때마다 "접근 허용" 을 한 번 눌러야 한다.
+# CODESIGN_IDENTITY 에 고정 인증서(자체 서명 또는 Developer ID)를 주면 그 프롬프트가 사라진다.
+#   security find-identity -v -p codesigning        # 사용 가능한 정체성 확인
+#   CODESIGN_IDENTITY="ClaudeMonitor Self-Signed" ./scripts/build_app.sh
+IDENTITY="${CODESIGN_IDENTITY:--}"
+if [ "$IDENTITY" = "-" ]; then
+  echo "==> ad-hoc code signing (재설치 시 키체인 접근 허용 1회 필요)"
+else
+  echo "==> code signing with identity: $IDENTITY"
+fi
+codesign --force --deep --sign "$IDENTITY" "$APP_DIR"
 codesign --verify --verbose=2 "$APP_DIR" || true
 
 echo "==> installing to /Applications"

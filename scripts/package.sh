@@ -54,8 +54,11 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
 
-echo "==> ad-hoc code signing"
-codesign --force --deep --sign - "$APP_DIR"
+# 서명 정체성 (기본 ad-hoc). CODESIGN_IDENTITY 로 고정 인증서를 주면 재설치 후에도 키체인 ACL 이
+# 유지돼 "접근 허용" 프롬프트가 없다 — CI 에서 쓰려면 인증서를 시크릿으로 임포트한 뒤 이 변수를 세팅한다.
+IDENTITY="${CODESIGN_IDENTITY:--}"
+echo "==> code signing (identity: $IDENTITY)"
+codesign --force --deep --sign "$IDENTITY" "$APP_DIR"
 codesign --verify --verbose=2 "$APP_DIR" || true
 
 echo "==> creating DMG via hdiutil"

@@ -206,8 +206,10 @@ final class AppState: ObservableObject {
                 UserDefaults.standard.set(d, forKey: Keys.accounts)
             }
         }
+        // 세션은 항목 1개에 모여 있으므로 한 번만 읽는다 (계정마다 읽으면 접근 허용도 계정 수만큼 뜬다).
+        let sessions = Keychain.loadAll(accountIds: list.map { $0.id.uuidString })
         for i in list.indices {
-            list[i].sessionKey = Keychain.get(account: list[i].id.uuidString) ?? ""
+            list[i].sessionKey = sessions[list[i].id.uuidString] ?? ""
         }
         self.accounts = list
         if let idStr = UserDefaults.standard.string(forKey: Keys.activeId),
@@ -240,23 +242,25 @@ final class AppState: ObservableObject {
                 activeAccountId = nil
             }
             var added = 0
-            var keychainFailed = false
+            // 한 세션 키에 조직이 여러 개 붙으므로, 조직마다 쓰지 않고 모아서 한 번에 저장한다.
+            var pendingSessions: [String: String] = [:]
             for org in orgs {
                 if let idx = accounts.firstIndex(where: { $0.organizationId == org.uuid }) {
                     accounts[idx].sessionKey = sessionKey
                     accounts[idx].organizationName = org.name
                     accounts[idx].planRaw = org.plan.rawValue
-                    if !Keychain.set(sessionKey, account: accounts[idx].id.uuidString) { keychainFailed = true }
+                    pendingSessions[accounts[idx].id.uuidString] = sessionKey
                 } else {
                     let acc = Account(organizationId: org.uuid,
                                       organizationName: org.name,
                                       plan: org.plan,
                                       sessionKey: sessionKey)
-                    if !Keychain.set(sessionKey, account: acc.id.uuidString) { keychainFailed = true }
+                    pendingSessions[acc.id.uuidString] = sessionKey
                     accounts.append(acc)
                     added += 1
                 }
             }
+            let keychainFailed = !Keychain.setMany(pendingSessions)
             if activeAccountId == nil || !accounts.contains(where: { $0.id == activeAccountId }) {
                 activeAccountId = accounts.first?.id
             }

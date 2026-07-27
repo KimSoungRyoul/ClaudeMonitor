@@ -34,7 +34,7 @@
 - 👥 Multi-account / multi-org: every organization reachable by one session key is registered automatically; switch with a tap
 - ⏱️ Remaining-time colors: 5h → red under 1 hour; 7d → red under 1 day, gold under 2 days, else green
 - 🌐 Built-in browser (WKWebView) login auto-extracts the session key; manual paste also supported
-- 🔐 Session key stored in the Keychain (only account metadata in UserDefaults)
+- 🔐 Session keys stored in the Keychain — in a **single item**, so a reinstall asks for Keychain approval once instead of once per account (only account metadata goes to UserDefaults)
 - 🔄 Auto-refresh (1/3/5/10/30 min) + manual refresh
 - 🆕 Update check against GitHub Releases — suggests a download when a newer version exists
 - 🌏 English / 한국어 (System / English / Korean) in Settings
@@ -45,6 +45,20 @@
 Download the DMG from the [latest release](https://github.com/KimSoungRyoul/ClaudeMonitor/releases/latest), open it, and drag **ClaudeMonitor.app** into Applications. The app is ad-hoc signed, so on first launch use right-click → Open (Gatekeeper).
 
 Then click the menu-bar gauge icon → `…` → **Add Claude account / Log in** and sign in to claude.ai.
+
+### Why macOS asks to access the Keychain after an update
+
+Keychain items remember *which build* was allowed to read them, and the released app is ad-hoc signed — every build is a different program to macOS, so the grant does not carry over. All session keys live in **one** Keychain item, so this costs a single **Allow** (pick *Always Allow*) per install, not one per account.
+
+To get rid of the prompt entirely, build with a stable signing identity — the item's ACL then keeps matching across versions:
+
+```bash
+# one-time: Keychain Access → Certificate Assistant → Create a Certificate…
+#   name: ClaudeMonitor Self-Signed · type: Code Signing · self-signed root
+security find-identity -v -p codesigning        # confirm it is listed
+
+CODESIGN_IDENTITY="ClaudeMonitor Self-Signed" ./scripts/build_app.sh
+```
 
 ## Build from source
 
