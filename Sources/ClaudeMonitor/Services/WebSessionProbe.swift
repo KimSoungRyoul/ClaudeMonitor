@@ -33,6 +33,22 @@ enum WebSessionProbe {
                 } else {
                     print("PROBE: ✅ BYPASS OK (got JSON, not the challenge page)")
                 }
+                // 숨은 호스트 윈도우가 실제로 안 보이는 상태인지 확인 (바탕화면에 박히는 버그 회귀 방지)
+                print("PROBE: host window \(WebSession.shared.hostWindowDiagnostics)")
+                if WebSession.shared.hostWindowVisibleToUser {
+                    print("PROBE: ❌ HOST WINDOW VISIBLE (would show claude.ai login on screen)")
+                } else {
+                    print("PROBE: ✅ HOST WINDOW HIDDEN (offscreen + transparent)")
+                }
+                // OS 가 윈도우를 화면 안으로 끌어오는 상황(디스플레이 변경 등)에서 다시 화면 밖으로 돌아가는지
+                WebSession.shared.debugForceOnScreen()
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                print("PROBE: after forced on-screen → \(WebSession.shared.hostWindowDiagnostics)")
+                if WebSession.shared.hostWindowVisibleToUser {
+                    print("PROBE: ❌ NOT RE-PARKED (window stuck on screen)")
+                } else {
+                    print("PROBE: ✅ RE-PARKED OFFSCREEN")
+                }
             } catch {
                 print("PROBE: error: \(error)")
             }
