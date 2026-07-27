@@ -105,7 +105,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
         if let w = settingsWindow { bringToFront(w); return }
         let view = SettingsView().environmentObject(state)
         let window = makeWindow(title: L.s("설정", "Settings"), view: view,
-                                size: NSSize(width: 480, height: 460))
+                                size: NSSize(width: 480, height: 580))
         settingsWindow = window
         bringToFront(window)
     }

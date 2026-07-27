@@ -210,6 +210,8 @@ struct AccountRow: View {
     let usage: AccountUsage?
     let error: String?
     let isActive: Bool
+    /// 세션 만료 — 새로고침으로는 못 고치니 행에서 바로 다시 로그인할 수 있게 한다.
+    var isExpired: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -251,7 +253,15 @@ struct AccountRow: View {
     @ViewBuilder
     private var subtitle: some View {
         if let error {
-            Text(error).font(.system(size: 10)).foregroundStyle(.red).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(error).font(.system(size: 10)).foregroundStyle(.red).lineLimit(2)
+                if isExpired {
+                    Button(L.s("다시 로그인", "Log in again")) { WindowManager.shared.openLogin() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0xD97757))
+                }
+            }
         } else if usage == nil {
             Text(L.s("불러오는 중…", "Loading…")).font(.system(size: 10)).foregroundStyle(.secondary)
         } else {
