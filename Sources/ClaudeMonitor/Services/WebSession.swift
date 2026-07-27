@@ -58,6 +58,7 @@ final class WebSession: NSObject {
         defer { unlock() }
 
         try await ensureHostLoaded()
+        parkOffscreen()      // 알림을 놓쳐 화면 안으로 끌려간 경우 대비(호출마다 자기치유)
         await setSessionKeyCookie(sessionKey)
 
         // 챌린지가 풀리는 데 시간이 걸릴 수 있고, fetch 가 일시적으로 던질 수도 있어
