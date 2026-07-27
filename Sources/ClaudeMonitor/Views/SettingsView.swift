@@ -9,6 +9,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @State private var launchAtLogin = LoginItem.isEnabled
+    @State private var loginItemError: String?
+    @State private var notificationError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -36,6 +39,53 @@ struct SettingsView: View {
                     .frame(width: 120)
                 }
                 .padding(6)
+            }
+
+            // 시작 & 알림
+            GroupBox(L.s("일반", "General")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(L.s("로그인 시 자동 실행", "Launch at login"), isOn: $launchAtLogin)
+                        .disabled(!LoginItem.isSupported)
+                        .onChange(of: launchAtLogin) { _, newValue in
+                            loginItemError = LoginItem.set(newValue)
+                            if loginItemError != nil { launchAtLogin = LoginItem.isEnabled }
+                        }
+                    if let loginItemError {
+                        Text(loginItemError).font(.caption).foregroundStyle(.orange)
+                    }
+
+                    Toggle(L.s("사용량이 임계값을 넘으면 알림", "Notify when usage crosses a threshold"),
+                           isOn: $state.notificationsEnabled)
+                        .onChange(of: state.notificationsEnabled) { _, newValue in
+                            guard newValue else { notificationError = nil; return }
+                            Task {
+                                let granted = await UsageNotifier.requestAuthorization()
+                                if !granted {
+                                    state.notificationsEnabled = false
+                                    notificationError = L.s("알림 권한이 없습니다. 시스템 설정 > 알림에서 허용해 주세요.",
+                                                            "Notifications are not allowed. Enable them in System Settings › Notifications.")
+                                } else {
+                                    notificationError = nil
+                                }
+                            }
+                        }
+                    if state.notificationsEnabled {
+                        HStack {
+                            Text(L.s("임계값", "Threshold"))
+                            Picker("", selection: $state.notificationThreshold) {
+                                ForEach([70, 80, 90, 95], id: \.self) { Text("\($0)%").tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(width: 90)
+                            Spacer()
+                        }
+                    }
+                    if let notificationError {
+                        Text(notificationError).font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // 새로고침 주기
@@ -88,7 +138,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 460)
+        .frame(width: 480, height: 580)
     }
 }
 

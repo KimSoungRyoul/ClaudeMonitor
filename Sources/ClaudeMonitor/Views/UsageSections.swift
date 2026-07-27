@@ -146,15 +146,45 @@ struct UsageSections: View {
             }
             VStack(spacing: 6) {
                 ForEach(state.accounts) { account in
-                    AccountRow(account: account,
-                               usage: state.usage(for: account),
-                               error: state.errors[account.id],
-                               isActive: account.id == state.activeAccount?.id)
-                        .contentShape(Rectangle())
-                        .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { state.setActive(account) } }
+                    // Button 으로 감싸야 키보드/VoiceOver 로도 계정을 고를 수 있다 (onTapGesture 는 마우스 전용).
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { state.setActive(account) }
+                    } label: {
+                        AccountRow(account: account,
+                                   usage: state.usage(for: account),
+                                   error: state.errors[account.id],
+                                   isActive: account.id == state.activeAccount?.id,
+                                   isExpired: state.expiredAccounts.contains(account.id))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(accessibilityLabel(for: account))
+                    .accessibilityAddTraits(account.id == state.activeAccount?.id ? [.isButton, .isSelected] : .isButton)
                 }
             }
         }
+    }
+}
+
+/// 계정 행의 VoiceOver 설명 (링 숫자를 읽어준다)
+extension UsageSections {
+    fileprivate func accessibilityLabel(for account: Account) -> String {
+        var parts = [account.displayName, account.plan.label]
+        if let u = state.usage(for: account) {
+            if let five = u.fiveHour {
+                parts.append(L.s("5시간 \(Int(five.percentage.rounded()))퍼센트",
+                                 "5-hour \(Int(five.percentage.rounded())) percent"))
+            }
+            if let seven = u.sevenDay {
+                parts.append(L.s("7일 \(Int(seven.percentage.rounded()))퍼센트",
+                                 "7-day \(Int(seven.percentage.rounded())) percent"))
+            }
+            for model in u.models {
+                parts.append("\(model.name) \(Int(model.usage.percentage.rounded()))%")
+            }
+        } else if let error = state.errors[account.id] {
+            parts.append(error)
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

@@ -40,6 +40,19 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(refreshMinutes, forKey: Keys.refreshMinutes); restartTimer() }
     }
 
+    /// 사용량 임계값 알림 사용 여부
+    @Published var notificationsEnabled: Bool {
+        didSet { UserDefaults.standard.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
+    }
+
+    /// 알림을 보낼 사용률(%) 임계값
+    @Published var notificationThreshold: Int {
+        didSet { UserDefaults.standard.set(notificationThreshold, forKey: Keys.notificationThreshold) }
+    }
+
+    /// 세션이 만료된 계정 (행에서 바로 다시 로그인할 수 있게 표시)
+    @Published var expiredAccounts: Set<UUID> = []
+
     /// 언어 설정 (시스템/영어/한국어)
     @Published var language: AppLanguage {
         didSet {
@@ -58,6 +71,8 @@ final class AppState: ObservableObject {
     private var consecutiveFailures = 0
     /// 백오프 중이면 이 시각 전에는 자동 새로고침을 건너뛴다. (수동 새로고침은 무시하고 바로 시도)
     private var nextAutoRefreshAllowedAt: Date?
+    /// 시스템 테마 변경 관찰자
+    private var appearanceObserver: NSObjectProtocol?
 
     private enum Keys {
         static let accounts = "accounts.v1"
@@ -70,6 +85,8 @@ final class AppState: ObservableObject {
         static let updateCachedURL = "updateCachedURL.v1"
         static let usageCache = "usageCache.v1"
         static let usageCachedAt = "usageCachedAt.v1"
+        static let notificationsEnabled = "notificationsEnabled.v1"
+        static let notificationThreshold = "notificationThreshold.v1"
     }
 
     /// 팝오버를 열었을 때 이 간격 안이면 새로고침을 건너뛴다(연속 오픈으로 API 를 두드리지 않게).
@@ -105,6 +122,9 @@ final class AppState: ObservableObject {
     init(demo: Bool = false) {
         let stored = UserDefaults.standard.integer(forKey: Keys.refreshMinutes)
         self.refreshMinutes = stored == 0 ? 5 : stored
+        self.notificationsEnabled = UserDefaults.standard.bool(forKey: Keys.notificationsEnabled)
+        let threshold = UserDefaults.standard.integer(forKey: Keys.notificationThreshold)
+        self.notificationThreshold = threshold == 0 ? 90 : threshold
         let langRaw = UserDefaults.standard.string(forKey: Keys.language)
         let lang = langRaw.flatMap { AppLanguage(rawValue: $0) } ?? .system
         self.language = lang
@@ -292,6 +312,7 @@ final class AppState: ObservableObject {
         }
         for account in accounts where account.sessionKey.isEmpty {
             errors[account.id] = ClaudeAPIError.unauthorized.errorDescription
+            expiredAccounts.insert(account.id)
         }
 
         var transientFailure = false
@@ -303,9 +324,13 @@ final class AppState: ObservableObject {
                 case .success(let u):
                     usage[account.id] = u
                     errors[account.id] = nil
+                    expiredAccounts.remove(account.id)
                 case .failure(let e):
                     errors[account.id] = e.errorDescription
                     if e.isTransient { transientFailure = true }
+                    // 세션 만료는 사용자가 다시 로그인해야만 풀린다 → 행에 바로 버튼을 띄운다.
+                    if case .unauthorized = e { expiredAccounts.insert(account.id) }
+                    else { expiredAccounts.remove(account.id) }
                 case nil:
                     errors[account.id] = ClaudeAPIError.noData.errorDescription
                     transientFailure = true
@@ -316,6 +341,10 @@ final class AppState: ObservableObject {
         applyBackoff(failed: transientFailure)
         lastUpdated = Date()
         saveUsageCache()
+        if notificationsEnabled {
+            UsageNotifier.evaluate(accounts: accounts, usage: usage,
+                                   threshold: Double(notificationThreshold))
+        }
         rebuildMenuBarImage()
     }
 
@@ -358,9 +387,22 @@ final class AppState: ObservableObject {
     /// (예전에는 팝오버 onAppear 에서만 호출돼, 팝오버를 열기 전까지 메뉴바가 비어 있었다)
     func start() {
         restartTimer()
+        observeAppearanceChanges()
         applyCachedUpdateInfo()
         Task { await refreshAll() }
         Task { await checkForUpdate() }
+    }
+
+    /// 다크/라이트 전환 시 메뉴바 이미지를 다시 그린다.
+    /// (ImageRenderer 는 렌더 시점의 외형으로 픽셀을 굽기 때문에, 그대로 두면 색이 배경과 어긋난다)
+    private func observeAppearanceChanges() {
+        guard appearanceObserver == nil else { return }
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.rebuildMenuBarImage() }
+        }
     }
 
     /// 팝오버를 열었을 때. onAppear 는 열 때마다 발생하므로 최소 간격 안이면 아무것도 하지 않는다.

@@ -48,6 +48,9 @@ The scripts assemble the `.app` by hand (Info.plist with `LSUIElement=YES`) and 
 - Hero = active account's 5h + 7d + each per-model weekly limit as ring gauges (each with reset time + remaining below); ring diameter shrinks to fit when there are 3+. Model rings use the short tag `<first-letter>7d` (e.g. Fable → `f7d`) as caption. Account rows show the same set as mini rings: 5h(green)/7d(purple)/model(e.g. Fable pink). `ModelLimit.shortTag` produces the tag; `Theme.modelColor` the color.
 - Remaining-time color — `TimeFmt.remainingColor(_, longCycle:)`: 5h → red <1h else green; 7d → red <1d, gold(`0xE0A500`) <2d, else green.
 - All user-facing strings go through `L.s(...)`; `TimeFmt` is locale-aware; language picker in Settings (System/EN/KO).
+- Settings also holds **launch at login** (`SMAppService.mainApp`, only functional from the `.app` bundle — the toggle disables itself for raw binaries) and **threshold notifications** (`UsageNotifier`, default 90%, one notification per limit per reset cycle; the key includes `resets_at` so a new cycle can alert again). Both are off by default and notifications ask for authorization when switched on.
+- Accessibility: the menu-bar image carries an `accessibilityDescription` (it is an image, so without one VoiceOver just says "image"), and account rows are `Button`s — `onTapGesture` alone is mouse-only.
+- The menu-bar image is baked by `ImageRenderer` at render time, so it is re-rendered on `AppleInterfaceThemeChangedNotification`; `NSApp` is nil in the preview path, hence the `NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()` fallback.
 
 ## Gotchas (non-obvious)
 
