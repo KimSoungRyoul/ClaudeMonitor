@@ -15,8 +15,25 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      # 디버그 빌드도 해야 #if DEBUG 코드(PreviewRenderer/DemoData/WebSessionProbe) 회귀를 잡는다.
+      - name: Build (debug)
+        run: swift build
+
+      - name: Test
+        run: swift test
+
       - name: Build (release)
         run: swift build -c release
+
+      - name: Release binary must not contain dev-only code
+        run: |
+          if nm -a .build/release/ClaudeMonitor | grep -q -e DemoData -e PreviewRenderer; then
+            echo "::error::release binary contains DEBUG-only types"; exit 1
+          fi
+          if strings -a .build/release/ClaudeMonitor | grep -q -e "데모" -e "Demo mode"; then
+            echo "::error::release binary contains demo strings"; exit 1
+          fi
+          echo "✅ release binary contains no demo/preview code"
 
       - name: Assemble .app (smoke check)
         run: |

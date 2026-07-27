@@ -49,8 +49,6 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>LSUIElement</key>             <true/>
     <key>NSHighResolutionCapable</key> <true/>
     <key>NSHumanReadableCopyright</key><string>Multi-account Claude usage monitor</string>
-    <key>NSAppTransportSecurity</key>
-    <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 </dict>
 </plist>
 PLIST

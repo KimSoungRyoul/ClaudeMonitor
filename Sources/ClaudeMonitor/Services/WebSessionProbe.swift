@@ -81,6 +81,8 @@ enum WebSessionProbe {
                 let orgs = try await ClaudeAPI.shared.fetchOrganizations(sessionKey: key)
                 print("DUMP: \(orgs.count) organizations")
                 for org in orgs {
+                    // 요금제 배지는 capabilities 로 추정한다 — 실제 값과 추정 결과를 같이 찍어 검증한다.
+                    print("  plan=\(org.plan.label) capabilities=\(org.capabilities ?? [])")
                     do {
                         let u = try await ClaudeAPI.shared.fetchUsage(organizationId: org.uuid, sessionKey: key)
                         let five = u.fiveHour.map { "\(Int($0.percentage))%" } ?? "—"

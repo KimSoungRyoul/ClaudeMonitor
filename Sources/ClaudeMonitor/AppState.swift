@@ -112,11 +112,22 @@ final class AppState: ObservableObject {
 
     // MARK: - 영속화
 
+    /// 디스크에 저장해도 되는 계정만. 데모 계정은 절대 남기지 않는다.
+    /// (남으면 다음 실행에서 세션 없는 유령 계정이 되고, 릴리즈에선 지울 방법이 없어진다)
+    nonisolated static func persistable(_ accounts: [Account]) -> [Account] {
+        accounts.filter { !$0.organizationId.hasPrefix("demo-") }
+    }
+
+    /// 저장분을 불러올 때의 정리. 실제 조직 id 는 UUID 라 "demo-" 로 시작할 수 없으므로,
+    /// 그런 항목은 과거 버전이 남긴 데모 계정이다.
+    nonisolated static func sanitizeLoaded(_ accounts: [Account]) -> [Account] {
+        persistable(accounts)
+    }
+
     private func loadAccounts() {
         guard let data = UserDefaults.standard.data(forKey: Keys.accounts),
               var list = try? JSONDecoder().decode([Account].self, from: data) else { return }
-        // 과거 버전이 데모 계정을 저장해버린 경우 정리한다. 실제 조직 id 는 UUID 라 "demo-" 로 시작할 수 없다.
-        let cleaned = list.filter { !$0.organizationId.hasPrefix("demo-") }
+        let cleaned = Self.sanitizeLoaded(list)
         if cleaned.count != list.count {
             list = cleaned
             if let d = try? JSONEncoder().encode(list) {
@@ -134,8 +145,7 @@ final class AppState: ObservableObject {
     }
 
     private func saveAccounts() {
-        // 데모 계정은 절대 디스크에 남기지 않는다. (남으면 다음 실행에서 세션 없는 유령 계정이 된다)
-        let real = accounts.filter { !$0.organizationId.hasPrefix("demo-") }
+        let real = Self.persistable(accounts)
         if let data = try? JSONEncoder().encode(real) {
             UserDefaults.standard.set(data, forKey: Keys.accounts)
         }

@@ -32,14 +32,17 @@ enum PlanKind: String, Codable, Sendable {
     }
 
     /// 조직 capabilities 배열에서 요금제를 추정한다.
+    /// 상위 요금제 신호가 먼저다 — Enterprise/Max 조직도 chat·claude_pro 를 함께 갖고 있다.
+    /// `chat` 만 있으면 유료 신호가 없는 것이므로 Free 다. (예전에는 Pro 로 표시해 무료 계정에
+    /// 잘못된 배지를 달았다.)
     static func infer(from capabilities: [String]?) -> PlanKind {
-        guard let caps = capabilities else { return .unknown }
+        guard let caps = capabilities, !caps.isEmpty else { return .unknown }
         let set = Set(caps.map { $0.lowercased() })
         if set.contains(where: { $0.contains("enterprise") }) { return .enterprise }
         if set.contains(where: { $0.contains("raven") || $0.contains("max") }) { return .max }
-        if set.contains("claude_pro") { return .pro }
-        if set.contains(where: { $0.contains("team") || $0.contains("claude_team") }) { return .team }
-        if set.contains("chat") { return .pro }
+        if set.contains(where: { $0.contains("team") }) { return .team }
+        if set.contains(where: { $0.contains("pro") }) { return .pro }
+        if set.contains("chat") { return .free }
         return .unknown
     }
 }

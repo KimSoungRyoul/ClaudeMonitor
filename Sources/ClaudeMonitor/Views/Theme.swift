@@ -87,6 +87,27 @@ extension Color {
 // MARK: - 시간 포맷
 
 enum TimeFmt {
+    // MARK: - 포매터 캐시
+    //
+    // 팝오버는 TimelineView 로 30초마다 여러 뷰를 다시 그리고, 그때마다 DateFormatter 를 새로
+    // 만들면 비싸다. (언어/포맷) 조합으로 캐시하고, 언어를 바꾸면 다른 키가 되므로 자동 반영된다.
+
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var formatters: [String: DateFormatter] = [:]
+
+    private static func formatter(format: String? = nil, template: String? = nil) -> DateFormatter {
+        let key = "\(L.lang == .ko ? "ko" : "en")|\(format ?? "")|\(template ?? "")"
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let cached = formatters[key] { return cached }
+        let df = DateFormatter()
+        df.locale = L.locale
+        if let format { df.dateFormat = format }
+        if let template { df.setLocalizedDateFormatFromTemplate(template) }
+        formatters[key] = df
+        return df
+    }
+
     /// 5시간 한도용: "오늘 오후 5:10" / "Today 5:10 PM"
     static func resetShort(_ date: Date?) -> String {
         guard let date else { return L.s("사용 시작 후 표시", "Shown after first use") }
@@ -94,40 +115,27 @@ enum TimeFmt {
         let time = timeString(date)
         if cal.isDateInToday(date) { return "\(L.s("오늘", "Today")) \(time)" }
         if cal.isDateInTomorrow(date) { return "\(L.s("내일", "Tomorrow")) \(time)" }
-        let df = DateFormatter()
-        df.locale = L.locale
-        df.setLocalizedDateFormatFromTemplate(L.lang == .ko ? "Md" : "MMMd")
+        let df = formatter(template: L.lang == .ko ? "Md" : "MMMd")
         return "\(df.string(from: date)) \(time)"
     }
 
     /// 7일 한도용: "6월 20일 오후 7시" / "Jun 20, 7 PM"
     static func resetLong(_ date: Date?) -> String {
         guard let date else { return L.s("사용 시작 후 표시", "Shown after first use") }
-        let df = DateFormatter()
-        df.locale = L.locale
         if L.lang == .ko {
-            df.dateFormat = "M월 d일 a h시"
-        } else {
-            df.setLocalizedDateFormatFromTemplate("MMMd")
-            return "\(df.string(from: date)), \(hourString(date))"
+            return formatter(format: "M월 d일 a h시").string(from: date)
         }
-        return df.string(from: date)
+        return "\(formatter(template: "MMMd").string(from: date)), \(hourString(date))"
     }
 
     /// "오후 5:10" / "5:10 PM"
     static func timeString(_ date: Date) -> String {
-        let df = DateFormatter()
-        df.locale = L.locale
-        df.dateFormat = L.lang == .ko ? "a h:mm" : "h:mm a"
-        return df.string(from: date)
+        formatter(format: L.lang == .ko ? "a h:mm" : "h:mm a").string(from: date)
     }
 
     /// "오후 7시" / "7 PM"
     private static func hourString(_ date: Date) -> String {
-        let df = DateFormatter()
-        df.locale = L.locale
-        df.dateFormat = L.lang == .ko ? "a h시" : "h a"
-        return df.string(from: date)
+        formatter(format: L.lang == .ko ? "a h시" : "h a").string(from: date)
     }
 
     /// 남은 시간: "2시간 30분 남음" / "2h 30m left"
