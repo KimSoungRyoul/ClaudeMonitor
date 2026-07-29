@@ -35,6 +35,14 @@ enum EntryPoint {
             KeychainProbe.run()
             return
         }
+        // 개발 전용: 설정 창이 실제로 스크롤되는지 검증 (스크롤 컨테이너 없이 잘리던 회귀 방지).
+        // 사용법: CTM_SETTINGS_TEST=1 [CTM_SETTINGS_HOLD=<초>] ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_SETTINGS_TEST"] != nil {
+            MainActor.assumeIsolated {
+                SettingsScrollProbe.run()
+            }
+            return
+        }
         // 개발 전용: usage API 응답 원본 JSON 덤프 (필드명 확인용).
         // 사용법: CTM_USAGE_DUMP=1 CTM_TEST_KEY=sk-ant-... ./.build/debug/ClaudeMonitor
         if ProcessInfo.processInfo.environment["CTM_USAGE_DUMP"] != nil {

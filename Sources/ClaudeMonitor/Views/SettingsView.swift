@@ -14,6 +14,18 @@ struct SettingsView: View {
     @State private var notificationError: String?
 
     var body: some View {
+        ScrollView(.vertical) {
+            content
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // fit-to-content 창(NSHostingController)에서 ScrollView 는 이상 높이가 없으면 접힌다 →
+        // 창의 기본 크기를 이상 크기로 못박고, 사용자가 늘리면 그만큼 채운다.
+        .frame(minWidth: 480, idealWidth: 480, maxWidth: .infinity,
+               minHeight: 320, idealHeight: 580, maxHeight: .infinity)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(L.s("설정", "Settings")).font(.title2.bold())
@@ -132,8 +144,6 @@ struct SettingsView: View {
                 }
             }
 
-            Spacer()
-
             HStack {
                 #if DEBUG
                 Toggle(L.s("데모 모드", "Demo mode"), isOn: Binding(
@@ -145,9 +155,8 @@ struct SettingsView: View {
                          "ClaudeMonitor v\(state.appVersion) · Multi-account Claude usage monitor"))
                     .font(.caption).foregroundStyle(.tertiary)
             }
+            .padding(.top, 4)
         }
-        .padding(20)
-        .frame(width: 480, height: 580)
     }
 }
 

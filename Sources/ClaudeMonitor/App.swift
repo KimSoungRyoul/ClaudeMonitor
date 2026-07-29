@@ -104,17 +104,30 @@ final class WindowManager: NSObject, NSWindowDelegate {
         guard let state else { return }
         if let w = settingsWindow { bringToFront(w); return }
         let view = SettingsView().environmentObject(state)
+        // 계정이 늘면 내용이 기본 높이를 넘는다 → 스크롤(SettingsView)에 더해 창도 키울 수 있게 한다.
+        // 최소 크기는 SettingsView 루트의 frame(minWidth:minHeight:) 이 정한다.
         let window = makeWindow(title: L.s("설정", "Settings"), view: view,
-                                size: NSSize(width: 480, height: 580))
+                                size: NSSize(width: 480, height: 580),
+                                resizable: true)
         settingsWindow = window
         bringToFront(window)
     }
 
-    private func makeWindow<V: View>(title: String, view: V, size: NSSize) -> NSWindow {
+    #if DEBUG
+    /// 검증용: 열려 있는 설정 창 (SettingsScrollProbe 가 스크롤 가능 여부를 확인한다).
+    var debugSettingsWindow: NSWindow? { settingsWindow }
+    #endif
+
+    private func makeWindow<V: View>(title: String, view: V, size: NSSize,
+                                     resizable: Bool = false) -> NSWindow {
         let hosting = NSHostingController(rootView: view)
+        // 기본값 .preferredContentSize 는 SwiftUI 이상 크기가 바뀔 때마다 창을 되돌려 사용자가
+        // 늘린 크기를 무시한다. .minSize 만 켜서 루트 뷰의 최소 크기를 창 한계로 쓴다
+        // (window.minSize 직접 지정은 Auto Layout 콘텐츠에서 AppKit 이 다시 덮어쓴다).
+        if resizable { hosting.sizingOptions = [.minSize] }
         let window = NSWindow(contentViewController: hosting)
         window.title = title
-        window.styleMask = [.titled, .closable]
+        window.styleMask = resizable ? [.titled, .closable, .resizable] : [.titled, .closable]
         window.setContentSize(size)
         window.isReleasedWhenClosed = false
         window.delegate = self
