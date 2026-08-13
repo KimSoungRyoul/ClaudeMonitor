@@ -98,6 +98,16 @@ struct SettingsView: View {
 
                     Divider()
 
+                    Toggle(L.s("세션 만료 시 Chrome 에서 자동으로 되살리기",
+                               "Restore expired sessions from Chrome automatically"),
+                           isOn: $state.chromeAutoSync)
+                    Text(L.s("켜면 세션이 만료된 계정을 로그인된 Chrome 세션으로 조용히 되살립니다. 처음 켤 때 브라우저의 Keychain 접근을 한 번 허용해야 합니다.",
+                             "When on, expired accounts are silently restored from your logged-in Chrome session. The first time, you must allow access to the browser’s Keychain item once."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Divider()
+
                     Toggle(L.s("모델별 주간 사용량 조회 (Fable)", "Track per-model weekly usage (Fable)"),
                            isOn: $state.showModelLimits)
                     Text(L.s("끄면 Fable 등 모델별 주간 한도(f7d) 링과 알림을 표시하지 않습니다. 5시간·7일 사용량만 봅니다.",

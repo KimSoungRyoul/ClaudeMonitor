@@ -51,6 +51,12 @@ enum EntryPoint {
             }
             return
         }
+        // 개발 전용: Chrome 쿠키에서 sessionKey 추출이 되는지 검증 (키는 마스킹).
+        // 사용법: CTM_CHROME_TEST=1 ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_CHROME_TEST"] != nil {
+            ChromeCookiesProbe.run()
+            return
+        }
         #endif
         ClaudeMonitorApp.main()
     }

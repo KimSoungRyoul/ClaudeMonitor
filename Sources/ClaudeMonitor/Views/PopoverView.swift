@@ -261,10 +261,18 @@ struct AccountRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(error).font(.system(size: 10)).foregroundStyle(.red).lineLimit(2)
                 if isExpired {
-                    Button(L.s("다시 로그인", "Log in again")) { WindowManager.shared.openLogin() }
+                    HStack(spacing: 10) {
+                        Button(L.s("다시 로그인", "Log in again")) { WindowManager.shared.openLogin() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color(hex: 0xD97757))
+                        Button(L.s("Chrome 에서 가져오기", "Import from Chrome")) {
+                            Task { _ = await AppState.shared.importFromChrome() }
+                        }
                         .buttonStyle(.plain)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xD97757))
+                        .foregroundStyle(.secondary)
+                    }
                 }
             }
         } else if usage == nil {

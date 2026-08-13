@@ -29,6 +29,24 @@ struct WebLoginView: View {
             .padding(12)
             Divider()
 
+            // Chrome 등에 이미 로그인돼 있으면, 여기서 다시 로그인하지 않고 그 세션을 그대로 가져온다.
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle")
+                    .foregroundStyle(Color(hex: 0xD97757))
+                Text(L.s("Chrome 에 이미 로그인돼 있다면 세션을 바로 가져올 수 있습니다.",
+                         "Already logged in to Chrome? Import that session directly."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(L.s("Chrome 에서 가져오기", "Import from Chrome")) {
+                    Task { await importFromChrome() }
+                }
+                .disabled(isWorking)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+
             ClaudeWebView(onSessionKey: { key in
                 guard foundKey != key else { return }
                 foundKey = key
@@ -70,6 +88,26 @@ struct WebLoginView: View {
             status = L.s("✅ \(n)개 계정 추가됨 (총 \(state.accounts.count)개). 창을 닫아도 됩니다.",
                          "✅ Added \(n) account(s) (\(state.accounts.count) total). You can close this window.")
             // 타이머는 실행 직후(AppState.start)부터 돌고 있고, addAccounts 가 이미 새로고침까지 마쳤다.
+        case .failure(let e):
+            status = "⚠️ \(e.errorDescription ?? L.s("실패", "failed"))"
+        }
+    }
+
+    @MainActor
+    private func importFromChrome() async {
+        isWorking = true
+        status = L.s("Chrome 세션을 읽는 중… (Keychain 접근을 물어보면 ‘허용’을 눌러 주세요)",
+                     "Reading Chrome session… (choose ‘Allow’ if asked for Keychain access)")
+        let result = await state.importFromChrome()
+        isWorking = false
+        switch result {
+        case .success(let r) where r.keys > 0:
+            let src = r.sources.first ?? "Chrome"
+            status = L.s("✅ \(src) 에서 세션 \(r.keys)개를 가져왔습니다 (계정 \(r.added)개 추가, 총 \(state.accounts.count)개).",
+                         "✅ Imported \(r.keys) session(s) from \(src) (\(r.added) added, \(state.accounts.count) total).")
+        case .success:
+            status = L.s("Chrome 에서 claude.ai 세션을 찾지 못했습니다.",
+                         "No claude.ai session was found in Chrome.")
         case .failure(let e):
             status = "⚠️ \(e.errorDescription ?? L.s("실패", "failed"))"
         }
