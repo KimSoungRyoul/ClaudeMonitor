@@ -62,6 +62,11 @@ final class AppState: ObservableObject {
     /// 세션이 만료된 계정 (행에서 바로 다시 로그인할 수 있게 표시)
     @Published var expiredAccounts: Set<UUID> = []
 
+    /// 만료된 계정을 Chrome 로그인 세션에서 자동으로 되살린다 (기본 off — 켤 때 Keychain 접근을 한 번 승인해야 한다).
+    @Published var chromeAutoSync: Bool {
+        didSet { UserDefaults.standard.set(chromeAutoSync, forKey: Keys.chromeAutoSync) }
+    }
+
     /// 언어 설정 (시스템/영어/한국어)
     @Published var language: AppLanguage {
         didSet {
@@ -97,6 +102,7 @@ final class AppState: ObservableObject {
         static let notificationsEnabled = "notificationsEnabled.v1"
         static let notificationThreshold = "notificationThreshold.v1"
         static let showModelLimits = "showModelLimits.v1"
+        static let chromeAutoSync = "chromeAutoSync.v1"
     }
 
     /// 팝오버를 열었을 때 이 간격 안이면 새로고침을 건너뛴다(연속 오픈으로 API 를 두드리지 않게).
@@ -105,6 +111,13 @@ final class AppState: ObservableObject {
     private static let updateCheckInterval: TimeInterval = 24 * 60 * 60
     /// 백오프 상한 (연속 실패가 이어져도 이보다 오래 쉬지는 않는다)
     private static let maxBackoff: TimeInterval = 30 * 60
+
+    /// Chrome 자동 복구 재진입 가드
+    private var isRestoringFromChrome = false
+    /// 마지막 Chrome 자동 복구 시각 (쿨다운 — 만료가 안 풀려도 매 새로고침마다 Chrome 을 뒤지지 않게)
+    private var lastChromeRestoreAt: Date?
+    /// Chrome 자동 복구 최소 간격
+    private static let chromeRestoreCooldown: TimeInterval = 10 * 60
 
     var activeAccount: Account? {
         guard let id = activeAccountId else { return accounts.first }
@@ -149,6 +162,7 @@ final class AppState: ObservableObject {
         self.notificationsEnabled = UserDefaults.standard.bool(forKey: Keys.notificationsEnabled)
         let threshold = UserDefaults.standard.integer(forKey: Keys.notificationThreshold)
         self.notificationThreshold = threshold == 0 ? 90 : threshold
+        self.chromeAutoSync = UserDefaults.standard.bool(forKey: Keys.chromeAutoSync)
         // 기본값은 표시(기존 동작 유지). bool(forKey:) 는 키가 없을 때도 false 라 object 로 구분한다.
         self.showModelLimits = (UserDefaults.standard.object(forKey: Keys.showModelLimits) as? Bool) ?? true
         let langRaw = UserDefaults.standard.string(forKey: Keys.language)
@@ -279,6 +293,70 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Chrome 세션 가져오기
+
+    /// Chrome 세션 가져오기 결과: 처리한 sessionKey 개수와 새로 추가된 계정 수.
+    struct ChromeImport { let keys: Int; let added: Int; let sources: [String] }
+
+    /// 로그인된 Chrome(및 Chromium 계열)에서 claude.ai 세션을 읽어 계정으로 추가/갱신한다(수동).
+    /// Keychain 접근이 동기+프롬프트라 백그라운드에서 읽고, 계정 반영은 메인 액터에서 한다.
+    func importFromChrome() async -> Result<ChromeImport, ChromeCookies.ImportError> {
+        let extracted: ChromeCookies.Result
+        do {
+            extracted = try await Self.readChromeSessions()
+        } catch let e as ChromeCookies.ImportError {
+            return .failure(e)
+        } catch {
+            return .failure(.decryptFailed)
+        }
+        var totalAdded = 0
+        for key in extracted.sessionKeys {
+            if case .success(let n) = await addAccounts(sessionKey: key) { totalAdded += n }
+        }
+        return .success(ChromeImport(keys: extracted.sessionKeys.count,
+                                     added: totalAdded, sources: extracted.sources))
+    }
+
+    /// 만료된 계정이 남아 있고 자동 동기화가 켜져 있으면, Chrome 세션에서 조용히 키를 교체해 되살린다.
+    /// (수동 가져오기와 달리 새 계정을 추가하지는 않는다 — 기존 계정의 sessionKey 만 갱신한다.)
+    private func maybeAutoRestoreFromChrome() async {
+        guard chromeAutoSync, !expiredAccounts.isEmpty, !isRestoringFromChrome else { return }
+        if let last = lastChromeRestoreAt, Date().timeIntervalSince(last) < Self.chromeRestoreCooldown { return }
+        isRestoringFromChrome = true
+        lastChromeRestoreAt = Date()
+        defer { isRestoringFromChrome = false }
+
+        guard let extracted = try? await Self.readChromeSessions() else { return }
+        // 만료된 계정의 조직 id → 계정. Chrome 에서 얻은 각 키가 이 조직을 포함하면 키를 교체한다.
+        let expired = accounts.filter { expiredAccounts.contains($0.id) }
+        guard !expired.isEmpty else { return }
+
+        var pending: [String: String] = [:]
+        for key in extracted.sessionKeys {
+            guard let orgs = try? await ClaudeAPI.shared.fetchOrganizations(sessionKey: key) else { continue }
+            let orgIds = Set(orgs.map(\.uuid))
+            for account in expired where orgIds.contains(account.organizationId) {
+                if let idx = accounts.firstIndex(where: { $0.id == account.id }),
+                   accounts[idx].sessionKey != key {
+                    accounts[idx].sessionKey = key
+                    pending[account.id.uuidString] = key
+                }
+            }
+        }
+        guard !pending.isEmpty else { return }
+        _ = Keychain.setMany(pending)
+        saveAccounts()
+        // 키를 갈아끼웠으니 한 번 더 새로고침 (재진입 가드로 여기서 다시 복구가 돌지는 않는다).
+        await refreshAll()
+    }
+
+    /// ChromeCookies 를 백그라운드 스레드에서 실행(동기 Keychain/SQLite 접근이 메인 액터를 막지 않게).
+    private static func readChromeSessions() async throws -> ChromeCookies.Result {
+        try await Task.detached(priority: .userInitiated) {
+            try ChromeCookies.importSessionKeys()
+        }.value
+    }
+
     func removeAccount(_ account: Account) {
         Keychain.delete(account: account.id.uuidString)
         accounts.removeAll { $0.id == account.id }
@@ -324,6 +402,8 @@ final class AppState: ObservableObject {
         refreshTask = task
         await task.value
         refreshTask = nil
+        // 세션 만료가 남아 있고 자동 동기화가 켜져 있으면 Chrome 세션으로 되살려 본다.
+        await maybeAutoRestoreFromChrome()
     }
 
     private func performRefresh() async {
