@@ -258,7 +258,8 @@ final class AppState: ObservableObject {
             var added = 0
             // 한 세션 키에 조직이 여러 개 붙으므로, 조직마다 쓰지 않고 모아서 한 번에 저장한다.
             var pendingSessions: [String: String] = [:]
-            for org in orgs {
+            // API 전용 조직(console.anthropic.com)은 claude.ai 사용량이 없다 → 계정으로 담지 않는다.
+            for org in orgs where org.reportsUsage {
                 if let idx = accounts.firstIndex(where: { $0.organizationId == org.uuid }) {
                     accounts[idx].sessionKey = sessionKey
                     accounts[idx].organizationName = org.name
@@ -334,7 +335,7 @@ final class AppState: ObservableObject {
         var pending: [String: String] = [:]
         for key in extracted.sessionKeys {
             guard let orgs = try? await ClaudeAPI.shared.fetchOrganizations(sessionKey: key) else { continue }
-            let orgIds = Set(orgs.map(\.uuid))
+            let orgIds = Set(orgs.filter(\.reportsUsage).map(\.uuid))
             for account in expired where orgIds.contains(account.organizationId) {
                 if let idx = accounts.firstIndex(where: { $0.id == account.id }),
                    accounts[idx].sessionKey != key {
@@ -438,8 +439,9 @@ final class AppState: ObservableObject {
                 case .failure(let e):
                     errors[account.id] = e.errorDescription
                     if e.isTransient { transientFailure = true }
-                    // 세션 만료는 사용자가 다시 로그인해야만 풀린다 → 행에 바로 버튼을 띄운다.
-                    if case .unauthorized = e { expiredAccounts.insert(account.id) }
+                    // 세션 만료(401/403)와 "이 세션에 없는 조직"(404)은 새로고침으로 안 풀린다 →
+                    // 행에 바로 복구 버튼을 띄우고, 자동 동기화가 켜져 있으면 Chrome 키로 교체한다.
+                    if e.needsReauth { expiredAccounts.insert(account.id) }
                     else { expiredAccounts.remove(account.id) }
                 case nil:
                     errors[account.id] = ClaudeAPIError.noData.errorDescription

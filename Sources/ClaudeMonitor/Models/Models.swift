@@ -59,6 +59,15 @@ struct Organization: Codable, Identifiable, Sendable, Equatable {
 
     var plan: PlanKind { PlanKind.infer(from: capabilities) }
 
+    /// claude.ai 사용량을 조회할 수 있는 조직인가.
+    /// `api` 만 있는 조직은 console.anthropic.com(API 결제) 전용이라 `/usage` 가 403 을 준다 —
+    /// 계정으로 추가하면 영원히 실패하는 행만 남으므로 애초에 담지 않는다.
+    /// (capabilities 가 없으면 판단 근거가 없으니 막지 않는다.)
+    var reportsUsage: Bool {
+        guard let caps = capabilities, !caps.isEmpty else { return true }
+        return caps.contains { $0.lowercased() == "chat" }
+    }
+
     static func == (lhs: Organization, rhs: Organization) -> Bool { lhs.uuid == rhs.uuid }
 }
 
