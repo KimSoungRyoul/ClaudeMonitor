@@ -20,6 +20,7 @@ enum ClaudeAPIError: LocalizedError {
     case invalidURL
     case noData
     case unauthorized        // 401 / 세션 만료
+    case organizationNotFound // 404 not_found_error — 이 세션 키에 없는 조직
     case cloudflareBlocked   // 403 또는 HTML 응답
     case rateLimited         // 429
     case http(Int)
@@ -31,6 +32,9 @@ enum ClaudeAPIError: LocalizedError {
         case .invalidURL: return L.s("잘못된 URL", "Invalid URL")
         case .noData: return L.s("응답 데이터 없음", "No response data")
         case .unauthorized: return L.s("세션이 만료되었습니다. 다시 로그인하세요.", "Session expired. Please log in again.")
+        case .organizationNotFound:
+            return L.s("이 세션에 없는 조직입니다 (다른 계정으로 로그인됨).",
+                       "Not in this session (logged in as a different account).")
         case .cloudflareBlocked: return L.s("Cloudflare 차단됨. 잠시 후 다시 시도하세요.", "Blocked by Cloudflare. Try again shortly.")
         case .rateLimited: return L.s("요청이 너무 많습니다. 잠시 후 다시 시도하세요.", "Too many requests. Try again shortly.")
         case .http(let code): return L.s("HTTP 오류 (\(code))", "HTTP error (\(code))")
@@ -45,7 +49,17 @@ enum ClaudeAPIError: LocalizedError {
         switch self {
         case .cloudflareBlocked, .rateLimited, .network, .noData: return true
         case .http(let code): return code >= 500
-        case .invalidURL, .unauthorized, .decoding: return false
+        case .invalidURL, .unauthorized, .organizationNotFound, .decoding: return false
+        }
+    }
+
+    /// 다시 로그인(또는 Chrome 세션 가져오기)해야만 풀리는 실패인가.
+    /// 404(조직 없음)도 포함이다 — 세션 키 자체는 살아 있어도 **다른 로그인의 키**라
+    /// 새로고침을 아무리 반복해도 그 조직은 안 보인다.
+    var needsReauth: Bool {
+        switch self {
+        case .unauthorized, .organizationNotFound: return true
+        default: return false
         }
     }
 }
@@ -62,14 +76,19 @@ actor ClaudeAPI {
     /// 실제 WebKit 엔진(WKWebView) 안에서 same-origin fetch 로 GET 을 수행한다.
     /// Cloudflare 챌린지를 진짜 브라우저로 통과시킨 컨텍스트를 재사용하므로 봇 차단을 받지 않는다.
     /// (WebSession 이 챌린지 재시도를 처리하고, 끝내 막히면 cloudflareBlocked 를 던진다.)
-    private func get(path: String, sessionKey: String) async throws -> Data {
+    private func get(path: String, sessionKey: String, orgScoped: Bool = false) async throws -> Data {
         let (status, data) = try await WebSession.shared.request(
             urlString: base + path, sessionKey: sessionKey)
-        return try Self.validate(status: status, data: data)
+        return try Self.validate(status: status, data: data, orgScoped: orgScoped)
     }
 
     /// 응답 1건의 상태/본문을 검사해 성공 데이터만 돌려준다.
-    static func validate(status: Int, data: Data) throws -> Data {
+    ///
+    /// `orgScoped` = `/organizations/{uuid}/…` 처럼 조직 하나를 가리키는 요청.
+    /// 이때의 404(`not_found_error`)는 "엔드포인트가 사라졌다"가 아니라 **그 세션 키에 그 조직이
+    /// 없다**는 뜻이다(존재하지 않는 uuid 와 같은 응답). 즉 계정이 다른 로그인의 키를 들고 있는
+    /// 상태 — 재시도로는 안 풀리고 다시 로그인/Chrome 가져오기로만 복구된다.
+    static func validate(status: Int, data: Data, orgScoped: Bool = false) throws -> Data {
         // 만일을 위한 HTML(=Cloudflare 챌린지) 응답 감지.
         // (진짜 챌린지는 WebSession 이 이미 걸러 cloudflareBlocked 를 던진다.)
         if let s = String(data: data, encoding: .utf8),
@@ -77,16 +96,18 @@ actor ClaudeAPI {
             throw ClaudeAPIError.cloudflareBlocked
         }
 
-        // permission_error(세션 만료/무효) → 다시 로그인 안내. status 분기보다 먼저 판별한다.
-        if let err = try? JSONDecoder().decode(APIErrorResponse.self, from: data),
-           err.error.type == "permission_error" {
-            throw ClaudeAPIError.unauthorized
+        // 오류 본문의 종류를 status 분기보다 먼저 본다.
+        // permission_error(세션 만료/무효) → 다시 로그인, not_found_error(조직 없음) → 키 교체 안내.
+        if let err = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+            if err.error.type == "permission_error" { throw ClaudeAPIError.unauthorized }
+            if orgScoped, err.error.type == "not_found_error" { throw ClaudeAPIError.organizationNotFound }
         }
 
         switch status {
         case 200...299: break
         // JSON 본문의 401/403 은 (Cloudflare 가 아니라) 인증/권한 문제 → 세션 만료로 안내
         case 401, 403: throw ClaudeAPIError.unauthorized
+        case 404 where orgScoped: throw ClaudeAPIError.organizationNotFound
         case 429: throw ClaudeAPIError.rateLimited
         default: throw ClaudeAPIError.http(status)
         }
@@ -107,7 +128,7 @@ actor ClaudeAPI {
 
     /// 한 조직의 사용량을 가져온다. Extra Usage 는 실패해도 무시(옵션).
     func fetchUsage(organizationId: String, sessionKey: String) async throws -> AccountUsage {
-        let data = try await get(path: "/organizations/\(organizationId)/usage", sessionKey: sessionKey)
+        let data = try await get(path: "/organizations/\(organizationId)/usage", sessionKey: sessionKey, orgScoped: true)
         let decoded: UsageAPIResponse
         do {
             decoded = try JSONDecoder().decode(UsageAPIResponse.self, from: data)
@@ -140,7 +161,7 @@ actor ClaudeAPI {
             var decoded: [String: UsageAPIResponse] = [:]
             for (org, response) in zip(organizationIds, responses) {
                 do {
-                    let data = try Self.validate(status: response.status, data: response.data)
+                    let data = try Self.validate(status: response.status, data: response.data, orgScoped: true)
                     guard let parsed = try? JSONDecoder().decode(UsageAPIResponse.self, from: data) else {
                         throw ClaudeAPIError.decoding
                     }
@@ -176,7 +197,7 @@ actor ClaudeAPI {
 
         var out: [String: ExtraUsage?] = [:]
         for (org, response) in zip(organizationIds, responses) {
-            guard let data = try? Self.validate(status: response.status, data: response.data),
+            guard let data = try? Self.validate(status: response.status, data: response.data, orgScoped: true),
                   let parsed = try? JSONDecoder().decode(OverageAPIResponse.self, from: data) else { continue }
             out[org] = Self.parseOverage(parsed)
         }
@@ -185,7 +206,7 @@ actor ClaudeAPI {
 
     /// Extra Usage 단독 조회 (Pro/Team)
     private func fetchOverage(organizationId: String, sessionKey: String) async throws -> ExtraUsage? {
-        guard let data = try? await get(path: "/organizations/\(organizationId)/overage_spend_limit", sessionKey: sessionKey) else { return nil }
+        guard let data = try? await get(path: "/organizations/\(organizationId)/overage_spend_limit", sessionKey: sessionKey, orgScoped: true) else { return nil }
         guard let r = try? JSONDecoder().decode(OverageAPIResponse.self, from: data) else { return nil }
         return Self.parseOverage(r)
     }
