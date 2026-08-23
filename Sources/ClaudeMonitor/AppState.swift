@@ -81,8 +81,12 @@ final class AppState: ObservableObject {
     private var timer: Timer?
     /// 진행 중인 새로고침 (재진입 방지 + 취소용)
     private var refreshTask: Task<Void, Never>?
+    /// 새로고침 회차 번호. 끝난 회차와 새로 시작된 회차를 구분한다(Task 는 값 타입이라 동일성 비교가 안 된다).
+    private var refreshTaskId = 0
     /// 연속 실패 횟수 (백오프 계산용)
     private var consecutiveFailures = 0
+    /// 한 계정도 못 가져온 회차가 연속 몇 번인지 (브라우저 컨텍스트 재생성 판단용)
+    private var consecutiveEmptyRefreshes = 0
     /// 백오프 중이면 이 시각 전에는 자동 새로고침을 건너뛴다. (수동 새로고침은 무시하고 바로 시도)
     private var nextAutoRefreshAllowedAt: Date?
     /// 시스템 테마 변경 관찰자
@@ -285,7 +289,8 @@ final class AppState: ObservableObject {
                       "Could not save the session to the Keychain. You will need to log in again after a restart.")
                 : nil
             saveAccounts()
-            await refreshAll()
+            // 방금 세션 키를 갈아끼웠다 — 진행 중이던 회차에 묻어가면 새 키가 반영되지 않는다.
+            await refreshAll(force: true)
             return .success(added)
         } catch let e as ClaudeAPIError {
             return .failure(e)
@@ -296,8 +301,18 @@ final class AppState: ObservableObject {
 
     // MARK: - Chrome 세션 가져오기
 
-    /// Chrome 세션 가져오기 결과: 처리한 sessionKey 개수와 새로 추가된 계정 수.
-    struct ChromeImport { let keys: Int; let added: Int; let sources: [String] }
+    /// Chrome 세션 가져오기 결과.
+    /// - `keys`: 브라우저에서 꺼낸 sessionKey 개수
+    /// - `usable`: 그중 claude.ai 가 실제로 받아준(조직을 돌려준) 개수
+    /// - `added`: 새로 만들어진 계정 수 (이미 있던 조직은 키만 갱신되므로 0 일 수 있다)
+    /// - `failure`: 하나도 못 쓴 경우의 이유
+    struct ChromeImport {
+        let keys: Int
+        let usable: Int
+        let added: Int
+        let sources: [String]
+        let failure: ClaudeAPIError?
+    }
 
     /// 로그인된 Chrome(및 Chromium 계열)에서 claude.ai 세션을 읽어 계정으로 추가/갱신한다(수동).
     /// Keychain 접근이 동기+프롬프트라 백그라운드에서 읽고, 계정 반영은 메인 액터에서 한다.
@@ -310,12 +325,25 @@ final class AppState: ObservableObject {
         } catch {
             return .failure(.decryptFailed)
         }
+        // 키마다 결과가 다르다. 하나도 못 썼는데 "가져왔습니다"라고 하면 사용자는 고쳐진 줄 알고
+        // 빨간 줄만 계속 보게 된다 — 실제로 쓸 수 있었던 개수와 실패 이유를 그대로 올려보낸다.
         var totalAdded = 0
+        var usable = 0
+        var firstFailure: ClaudeAPIError?
         for key in extracted.sessionKeys {
-            if case .success(let n) = await addAccounts(sessionKey: key) { totalAdded += n }
+            switch await addAccounts(sessionKey: key) {
+            case .success(let n):
+                usable += 1
+                totalAdded += n
+            case .failure(let e):
+                if firstFailure == nil { firstFailure = e }
+            }
         }
         return .success(ChromeImport(keys: extracted.sessionKeys.count,
-                                     added: totalAdded, sources: extracted.sources))
+                                     usable: usable,
+                                     added: totalAdded,
+                                     sources: extracted.sources,
+                                     failure: usable == 0 ? firstFailure : nil))
     }
 
     /// 만료된 계정이 남아 있고 자동 동기화가 켜져 있으면, Chrome 세션에서 조용히 키를 교체해 되살린다.
@@ -348,7 +376,7 @@ final class AppState: ObservableObject {
         _ = Keychain.setMany(pending)
         saveAccounts()
         // 키를 갈아끼웠으니 한 번 더 새로고침 (재진입 가드로 여기서 다시 복구가 돌지는 않는다).
-        await refreshAll()
+        await refreshAll(force: true)
     }
 
     /// ChromeCookies 를 백그라운드 스레드에서 실행(동기 Keychain/SQLite 접근이 메인 액터를 막지 않게).
@@ -392,17 +420,28 @@ final class AppState: ObservableObject {
     // MARK: - 새로고침
 
     /// 새로고침. 이미 진행 중이면 그 작업이 끝날 때까지 기다린다(중복 실행 방지).
-    /// - Parameter automatic: 타이머/팝오버가 부른 호출. 백오프 중이면 건너뛴다(사용자가 누른 새로고침은 항상 실행).
-    func refreshAll(automatic: Bool = false) async {
+    /// - Parameters:
+    ///   - automatic: 타이머/팝오버가 부른 호출. 백오프 중이면 건너뛴다(사용자가 누른 새로고침은 항상 실행).
+    ///   - force: 방금 계정/세션 키를 바꿨으니 **반드시 새 회차가 필요하다**는 뜻.
+    ///     진행 중이던 회차는 그 변경 이전 상태로 시작했기 때문에, 기다렸다 결과만 받으면
+    ///     새 키가 반영되지 않은 실패가 화면에 그대로 남는다 (Chrome 가져오기 직후 계속 빨간 줄이 뜨던 원인).
+    func refreshAll(automatic: Bool = false, force: Bool = false) async {
         if let running = refreshTask {
+            let waitedId = refreshTaskId
             await running.value
-            return
+            guard force else { return }
+            // 기다리는 동안 다른 호출이 새 회차를 시작했다면 그쪽이 이미 최신 상태를 본다.
+            // (`refreshTask` 자체는 끝난 회차가 아직 담겨 있을 수 있어 번호로 구분한다)
+            if refreshTaskId != waitedId, let newer = refreshTask { await newer.value; return }
         }
         if automatic, let until = nextAutoRefreshAllowedAt, Date() < until { return }
+        refreshTaskId += 1
+        let myId = refreshTaskId
         let task = Task { @MainActor in await self.performRefresh() }
         refreshTask = task
         await task.value
-        refreshTask = nil
+        // 내 회차가 아직 최신일 때만 비운다 (그 사이 시작된 회차를 지워버리지 않게).
+        if refreshTaskId == myId { refreshTask = nil }
         // 세션 만료가 남아 있고 자동 동기화가 켜져 있으면 Chrome 세션으로 되살려 본다.
         await maybeAutoRestoreFromChrome()
     }
@@ -427,6 +466,7 @@ final class AppState: ObservableObject {
         }
 
         var transientFailure = false
+        var succeeded = 0
         for (key, group) in groups {
             let results = await ClaudeAPI.shared.fetchUsages(
                 organizationIds: group.map(\.organizationId), sessionKey: key)
@@ -436,6 +476,7 @@ final class AppState: ObservableObject {
                     usage[account.id] = u
                     errors[account.id] = nil
                     expiredAccounts.remove(account.id)
+                    succeeded += 1
                 case .failure(let e):
                     errors[account.id] = e.errorDescription
                     if e.isTransient { transientFailure = true }
@@ -448,6 +489,19 @@ final class AppState: ObservableObject {
                     transientFailure = true
                 }
             }
+        }
+
+        // 한 계정도 못 가져온 회차가 이어지면 브라우저 컨텍스트가 굳었을 가능성이 크다.
+        // (오래 살아남은 WKWebView 하나로 계속 실패하던 실행본이 앱 재시작으로만 풀렸다)
+        // 다음 회차가 새 WebKit 컨텍스트에서 시작하도록 버린다 — 대가는 챌린지 재통과 몇 초뿐이다.
+        if !groups.isEmpty, succeeded == 0 {
+            consecutiveEmptyRefreshes += 1
+            if consecutiveEmptyRefreshes >= 2 {
+                consecutiveEmptyRefreshes = 0
+                WebSession.shared.resetContext()
+            }
+        } else {
+            consecutiveEmptyRefreshes = 0
         }
 
         applyBackoff(failed: transientFailure)

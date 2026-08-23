@@ -56,6 +56,16 @@ final class WebSession: NSObject {
     private static let idleTeardownDelay: TimeInterval = 120
     private var teardownTask: Task<Void, Never>?
 
+    /// 웹뷰 하나를 계속 재사용할 수 있는 최대 시간.
+    ///
+    /// 새로고침 주기가 2분 이하면 유휴 정리(`idleTeardownDelay`)가 매번 취소돼 웹뷰가 **영원히**
+    /// 살아 있게 된다. 그 상태에서 페이지/쿠키 컨텍스트가 한 번 어긋나면 앱을 다시 켜기 전까지
+    /// 모든 조회가 계속 실패한다(실제로 1분 주기로 15시간 돌던 실행본이 그렇게 굳었다).
+    /// 그래서 나이 제한을 둬, 오래된 컨텍스트는 요청 전에 버리고 새로 만든다.
+    /// 대가는 챌린지 재통과 몇 초뿐이고, 기본 주기(5분)에서는 어차피 매번 새로 만든다.
+    private static let maxWarmLifetime: TimeInterval = 10 * 60
+    private var webViewCreatedAt: Date?
+
     // 네비게이션 완료 대기용 연속체
     private var navWaiters: [CheckedContinuation<Void, Error>] = []
 
@@ -87,9 +97,10 @@ final class WebSession: NSObject {
             scheduleIdleTeardown()
         }
 
+        recycleIfStale()     // 오래 살아남은 컨텍스트는 버린다 (굳은 웹뷰로 계속 실패하지 않게)
         try await ensureHostLoaded()
         parkOffscreen()      // 알림을 놓쳐 화면 안으로 끌려간 경우 대비(호출마다 자기치유)
-        await setSessionKeyCookie(sessionKey)
+        try await setSessionKeyCookie(sessionKey)
 
         // 챌린지가 풀리는 데 시간이 걸릴 수 있고, fetch 가 일시적으로 던질 수도 있어
         // 백오프로 재시도한다.
@@ -117,6 +128,21 @@ final class WebSession: NSObject {
     }
 
     // MARK: - 호스트 페이지 / 웹뷰
+
+    /// 웹뷰가 `maxWarmLifetime` 을 넘겨 살아 있으면 통째로 버린다. (요청 직전, 락 안에서만 호출)
+    private func recycleIfStale() {
+        guard let created = webViewCreatedAt,
+              Date().timeIntervalSince(created) > Self.maxWarmLifetime else { return }
+        teardownHost()
+    }
+
+    /// 다음 요청이 완전히 새 WebKit 컨텍스트에서 시작하도록 강제한다.
+    /// (조회가 통째로 실패할 때 AppState 가 부른다 — 앱을 다시 켜야 풀리던 상황의 자동 복구)
+    func resetContext() {
+        guard !locked else { return }   // 요청 처리 중이면 건드리지 않는다 (끝나면 나이 제한이 처리한다)
+        teardownTask?.cancel()
+        teardownHost()
+    }
 
     private func ensureHostLoaded() async throws {
         if webView == nil { makeWebView() }
@@ -165,6 +191,10 @@ final class WebSession: NSObject {
 
         self.webView = wv
         self.hostWindow = window
+        self.webViewCreatedAt = Date()
+        #if DEBUG
+        self.webViewGeneration += 1
+        #endif
         parkOffscreen()          // order-front 이후 좌표 재확정
         observeOffscreenBreakage()
     }
@@ -197,6 +227,7 @@ final class WebSession: NSObject {
         webView = nil
         hostWindow = nil
         didLoadHost = false
+        webViewCreatedAt = nil
     }
 
     // MARK: - 호스트 윈도우 숨김 유지
@@ -256,6 +287,27 @@ final class WebSession: NSObject {
         w.setFrameOrigin(NSPoint(x: screen.frame.midX, y: screen.frame.midY))
     }
 
+    /// 검증용: 지금까지 만들어진 웹뷰 개수. 재생성이 실제로 일어났는지 센다.
+    private(set) var webViewGeneration = 0
+
+    /// 검증용: 웹뷰를 실제로 오래 산 것처럼 만들어 나이 제한(recycleIfStale)을 시험한다.
+    func debugAgeWebView(by seconds: TimeInterval) {
+        guard let created = webViewCreatedAt else { return }
+        webViewCreatedAt = created.addingTimeInterval(-seconds)
+    }
+
+    /// 검증용: 현재 쿠키 스토어에 남아 있는 claude.ai 쿠키 목록(값은 지문만).
+    /// sessionKey 가 두 개(우리 것 + 서버가 내려준 것) 남으면 인증이 뒤섞인다.
+    func debugCookieSummary() async -> String {
+        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else { return "no store" }
+        let cookies = await store.allCookies()
+        return cookies
+            .filter { $0.domain.hasSuffix("claude.ai") }
+            .map { "\($0.name)@\($0.domain)\($0.path)=\($0.value.suffix(6))" }
+            .sorted()
+            .joined(separator: " | ")
+    }
+
     /// 검증용: 숨은 호스트 윈도우 상태 요약. (보이거나 화면과 겹치면 버그)
     var hostWindowDiagnostics: String {
         guard let w = hostWindow else { return "hostWindow=nil" }
@@ -282,16 +334,37 @@ final class WebSession: NSObject {
 
     // MARK: - 쿠키 / fetch
 
-    private func setSessionKeyCookie(_ key: String) async {
-        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
+    /// 이 요청에 쓸 sessionKey 를 쿠키 스토어에 주입한다.
+    ///
+    /// 계정마다 키가 다르므로 **주입이 실패하면 직전 계정으로 인증된다**. 그러면 서버는
+    /// "그 조직은 이 세션에 없다"는 뜻으로 404 를 주고, 앱은 멀쩡한 계정을 만료로 오해한다.
+    /// 그래서 (1) 이름이 같은 기존 쿠키를 도메인/경로 상관없이 먼저 지우고,
+    /// (2) 넣은 값이 실제로 스토어에 남았는지 확인하고, (3) 아니면 오류로 끝낸다.
+    /// 잘못된 계정으로 조회해 만료 표시를 남기느니 그 회차를 실패시키는 편이 낫다.
+    private func setSessionKeyCookie(_ key: String) async throws {
+        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else {
+            throw ClaudeAPIError.network("no cookie store")
+        }
         guard let cookie = HTTPCookie(properties: [
             .domain: "claude.ai",
             .path: "/",
             .name: "sessionKey",
             .value: key,
             .secure: true
-        ]) else { return }
-        await store.setCookie(cookie)
+        ]) else { throw ClaudeAPIError.network("bad session cookie") }
+
+        // 확인하는 사이에 서버 쿠키가 끼어들 수 있으니 한 번은 다시 해본다.
+        for _ in 0..<2 {
+            // 서버가 내려준 `.claude.ai` 쿠키가 우리 host-only 쿠키와 함께 남으면 둘 다 전송된다.
+            for stale in await store.allCookies() where stale.name == "sessionKey" {
+                await store.deleteCookie(stale)
+            }
+            await store.setCookie(cookie)
+
+            let applied = await store.allCookies().filter { $0.name == "sessionKey" }
+            if applied.count == 1, applied[0].value == key { return }
+        }
+        throw ClaudeAPIError.network("session cookie not applied")
     }
 
     /// 페이지 컨텍스트에서 same-origin fetch 들을 병렬 실행하고 [(상태코드, 본문)] 을 URL 순서대로 반환.
