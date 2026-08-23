@@ -101,10 +101,19 @@ struct WebLoginView: View {
         let result = await state.importFromChrome()
         isWorking = false
         switch result {
+        case .success(let r) where r.keys > 0 && r.usable == 0:
+            // 쿠키는 꺼냈지만 claude.ai 가 받아주지 않았다 (브라우저에서 로그아웃됐거나 만료).
+            // 여기서 "가져왔습니다"라고 하면 사용자는 고쳐진 줄 알고 계속 빨간 줄만 보게 된다.
+            let reason = r.failure?.errorDescription ?? L.s("세션이 유효하지 않습니다.", "the session is not valid.")
+            status = L.s("⚠️ 세션 \(r.keys)개를 찾았지만 쓸 수 있는 것이 없습니다 — \(reason) 브라우저에서 claude.ai 에 다시 로그인해 주세요.",
+                         "⚠️ Found \(r.keys) session(s) but none are usable — \(reason) Log in to claude.ai in your browser again.")
         case .success(let r) where r.keys > 0:
-            let src = r.sources.first ?? "Chrome"
-            status = L.s("✅ \(src) 에서 세션 \(r.keys)개를 가져왔습니다 (계정 \(r.added)개 추가, 총 \(state.accounts.count)개).",
-                         "✅ Imported \(r.keys) session(s) from \(src) (\(r.added) added, \(state.accounts.count) total).")
+            let src = r.sources.joined(separator: ", ")
+            let scope = r.usable == r.keys
+                ? L.s("세션 \(r.keys)개", "\(r.keys) session(s)")
+                : L.s("세션 \(r.keys)개 중 \(r.usable)개", "\(r.usable) of \(r.keys) session(s)")
+            status = L.s("✅ \(src) 에서 \(scope)를 가져왔습니다 (계정 \(r.added)개 추가, 총 \(state.accounts.count)개).",
+                         "✅ Imported \(scope) from \(src) (\(r.added) added, \(state.accounts.count) total).")
         case .success:
             status = L.s("Chrome 에서 claude.ai 세션을 찾지 못했습니다.",
                          "No claude.ai session was found in Chrome.")

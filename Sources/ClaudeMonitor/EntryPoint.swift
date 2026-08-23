@@ -51,6 +51,22 @@ enum EntryPoint {
             }
             return
         }
+        // 개발 전용: 실제 계정 구성으로 새로고침 조회를 그대로 재현.
+        // 사용법: CTM_REFRESH_SIM=<orgId→sessionKey json> ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_REFRESH_SIM"] != nil {
+            MainActor.assumeIsolated {
+                WebSessionProbe.refreshSim()
+            }
+            return
+        }
+        // 개발 전용: 여러 계정(sessionKey)을 번갈아 써도 인증이 섞이지 않는지 검증.
+        // 사용법: CTM_MULTIKEY_TEST=1 CTM_TEST_KEY=<A> CTM_TEST_KEY2=<B> ./.build/debug/ClaudeMonitor
+        if ProcessInfo.processInfo.environment["CTM_MULTIKEY_TEST"] != nil {
+            MainActor.assumeIsolated {
+                WebSessionProbe.multiKey()
+            }
+            return
+        }
         // 개발 전용: Chrome 쿠키에서 sessionKey 추출이 되는지 검증 (키는 마스킹).
         // 사용법: CTM_CHROME_TEST=1 ./.build/debug/ClaudeMonitor
         if ProcessInfo.processInfo.environment["CTM_CHROME_TEST"] != nil {
