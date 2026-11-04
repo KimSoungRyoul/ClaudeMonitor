@@ -17,8 +17,20 @@ enum ChromeCookiesProbe {
         let browsers = ChromeCookies.installedBrowsers()
         print("설치된 Chromium 브라우저: \(browsers.map(\.name).joined(separator: ", ").ifEmpty("(없음)"))")
         for b in browsers {
-            let profiles = ChromeCookies.profileCookieFiles(in: b.dir)
+            guard case .profiles(let profiles) = ChromeCookies.scanProfiles(in: b.dir) else {
+                // `open` 으로 띄운 .app 에서만 재현된다 — 터미널에서 실행하면 터미널의 권한을 물려받는다.
+                print("  · \(b.name): ⛔️ macOS 가 폴더 접근을 막음 (EPERM) → 전체 디스크 접근 권한 필요")
+                continue
+            }
             print("  · \(b.name): 프로필 \(profiles.count)개 → \(profiles.map(\.0).joined(separator: ", "))")
+            // Keychain 없이 확인할 수 있는 단계: Cookies DB 에 sessionKey row 가 몇 개 있나.
+            for (name, url) in profiles {
+                if let rows = try? ChromeCookies.readEncryptedSessionKeys(cookieDB: url) {
+                    print("      \(name): sessionKey row \(rows.count)개")
+                } else {
+                    print("      \(name): ⛔️ Cookies 파일 접근이 막힘 (EPERM)")
+                }
+            }
         }
 
         do {
