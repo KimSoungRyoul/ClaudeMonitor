@@ -267,7 +267,18 @@ struct AccountRow: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color(hex: 0xD97757))
                         Button(L.s("Chrome 에서 가져오기", "Import from Chrome")) {
-                            Task { _ = await AppState.shared.importFromChrome() }
+                            Task {
+                                // 결과를 버리면 실패했을 때 버튼이 아무 반응도 없는 것처럼 보인다.
+                                // 권한 문제면 고칠 곳(설정)을, 그 밖의 실패면 이유가 보이는 로그인 창을 연다.
+                                switch await AppState.shared.importFromChrome() {
+                                case .failure(.accessBlocked):
+                                    NSWorkspace.shared.open(ChromeCookies.fullDiskAccessSettingsURL)
+                                case .success(let r) where r.usable > 0:
+                                    break
+                                default:
+                                    WindowManager.shared.openLogin()
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 10, weight: .semibold))

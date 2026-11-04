@@ -16,6 +16,8 @@ struct WebLoginView: View {
     @State private var isWorking = false
     @State private var manualKey: String = ""
     @State private var foundKey: String?
+    /// Chrome 가져오기가 macOS 권한에 막혔을 때만 켠다 → 설정 화면 바로가기 버튼
+    @State private var needsDiskAccess = false
 
     var onClose: () -> Void = {}
 
@@ -60,6 +62,16 @@ struct WebLoginView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(isWorking ? .orange : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if needsDiskAccess {
+                    HStack {
+                        Button(L.s("전체 디스크 접근 권한 열기", "Open Full Disk Access")) {
+                            NSWorkspace.shared.open(ChromeCookies.fullDiskAccessSettingsURL)
+                        }
+                        Spacer()
+                    }
+                }
 
                 HStack(spacing: 8) {
                     SecureField(L.s("또는 sessionKey 직접 붙여넣기 (sk-ant-…)", "Or paste sessionKey directly (sk-ant-…)"), text: $manualKey)
@@ -100,6 +112,7 @@ struct WebLoginView: View {
                      "Reading Chrome session… (choose ‘Allow’ if asked for Keychain access)")
         let result = await state.importFromChrome()
         isWorking = false
+        if case .failure(.accessBlocked) = result { needsDiskAccess = true } else { needsDiskAccess = false }
         switch result {
         case .success(let r) where r.keys > 0 && r.usable == 0:
             // 쿠키는 꺼냈지만 claude.ai 가 받아주지 않았다 (브라우저에서 로그아웃됐거나 만료).

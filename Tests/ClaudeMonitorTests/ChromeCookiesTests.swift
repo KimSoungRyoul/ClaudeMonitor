@@ -86,6 +86,69 @@ final class ChromeCookiesTests: XCTestCase {
         XCTAssertTrue(found.contains { $0.0 == "Profile 1" && $0.1.lastPathComponent == "Cookies" })
     }
 
+    // MARK: - 접근 차단 (macOS 가 다른 앱 데이터 폴더를 막을 때)
+
+    func testPermissionErrorRecognizesCocoaAndPOSIXDenials() {
+        // 실제로 관측된 형태: NSCocoaErrorDomain 257 + underlying NSPOSIXErrorDomain 1 (EPERM)
+        let eperm = NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM))
+        let cocoa = NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError,
+                            userInfo: [NSUnderlyingErrorKey: eperm])
+        XCTAssertTrue(ChromeCookies.isPermissionError(cocoa))
+        XCTAssertTrue(ChromeCookies.isPermissionError(eperm))
+        XCTAssertTrue(ChromeCookies.isPermissionError(NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))))
+        // 감싼 에러 안쪽에만 EPERM 이 있어도 차단으로 본다
+        let wrapped = NSError(domain: "x", code: 1, userInfo: [NSUnderlyingErrorKey: eperm])
+        XCTAssertTrue(ChromeCookies.isPermissionError(wrapped))
+
+        // "없음"은 차단이 아니다 — 그건 그냥 프로필/쿠키가 없는 것
+        XCTAssertFalse(ChromeCookies.isPermissionError(NSError(domain: NSCocoaErrorDomain,
+                                                              code: NSFileReadNoSuchFileError)))
+        XCTAssertFalse(ChromeCookies.isPermissionError(NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT))))
+    }
+
+    func testScanProfilesReportsBlockedDirectoryInsteadOfNoProfiles() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("ctm-test-\(UUID().uuidString)")
+        try makeFile(at: root.appendingPathComponent("Default/Cookies"))
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.path)
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+            try? fm.removeItem(at: root)
+        }
+        // root 로 돌면 권한 비트가 무시된다 — 그 환경에선 이 검증이 의미가 없다.
+        try XCTSkipIf(getuid() == 0, "running as root ignores permission bits")
+
+        guard case .blocked = ChromeCookies.scanProfiles(in: root) else {
+            return XCTFail("a directory we may not list must be reported as blocked, not as 'no profiles'")
+        }
+        XCTAssertTrue(ChromeCookies.profileCookieFiles(in: root).isEmpty)
+    }
+
+    func testReadingBlockedCookieFileThrowsInsteadOfReturningEmpty() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("ctm-test-\(UUID().uuidString)")
+        let cookies = root.appendingPathComponent("Cookies")
+        try makeFile(at: cookies)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: cookies.path)
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: cookies.path)
+            try? fm.removeItem(at: root)
+        }
+        try XCTSkipIf(getuid() == 0, "running as root ignores permission bits")
+
+        XCTAssertThrowsError(try ChromeCookies.readEncryptedSessionKeys(cookieDB: cookies)) { error in
+            XCTAssertTrue(error is ChromeCookies.CookieAccessBlocked)
+        }
+        // 파일이 아예 없으면 차단이 아니라 "쿠키 없음"
+        XCTAssertEqual(try ChromeCookies.readEncryptedSessionKeys(cookieDB: root.appendingPathComponent("nope")), [])
+    }
+
+    func testAccessBlockedMessageNamesTheBrowserAndTheSetting() {
+        let msg = ChromeCookies.ImportError.accessBlocked(["Chrome"]).errorDescription ?? ""
+        XCTAssertTrue(msg.contains("Chrome"))
+        XCTAssertTrue(msg.contains("전체 디스크 접근 권한") || msg.contains("Full Disk Access"))
+    }
+
     // MARK: - 헬퍼
 
     private func makeFile(at url: URL) throws {

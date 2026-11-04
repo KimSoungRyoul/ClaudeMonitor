@@ -14,6 +14,11 @@
 //
 //  DB 는 브라우저 실행 중 잠길 수 있으므로 임시 사본을 만들어 읽기 전용(immutable)으로 연다.
 //
+//  macOS 는 다른 앱의 데이터 폴더(`~/Library/Application Support/Google/Chrome` 등)를 앱 단위로 보호한다.
+//  권한 없는 앱은 파일이 있어도 EPERM 을 받고 프롬프트도 뜨지 않는다 → `.accessBlocked` 로 구분해
+//  "전체 디스크 접근 권한" 안내를 띄운다. 터미널에서 돌린 바이너리는 터미널의 권한을 물려받아
+//  이 문제가 재현되지 않으니, 검증은 `open` 으로 띄운 .app 으로 한다.
+//
 
 import Foundation
 import CommonCrypto
@@ -30,8 +35,9 @@ enum ChromeCookies {
         var sources: [String]
     }
 
-    enum ImportError: LocalizedError {
+    enum ImportError: LocalizedError, Equatable {
         case noBrowser              // 지원 브라우저가 설치돼 있지 않음
+        case accessBlocked([String]) // macOS 가 브라우저 데이터 폴더 접근을 막음 (EPERM) — 브라우저 표시명들
         case keychainDenied         // Safe Storage 비밀번호를 못 읽음 (사용자가 거부했거나 항목 없음)
         case noCookie               // claude.ai sessionKey 쿠키를 어디서도 못 찾음 (브라우저에 로그인 안 됨)
         case decryptFailed          // 복호화는 시도했으나 실패
@@ -41,6 +47,10 @@ enum ChromeCookies {
             case .noBrowser:
                 return L.s("Chrome(또는 Chromium 계열) 브라우저를 찾지 못했습니다.",
                            "No Chrome (or Chromium-based) browser was found.")
+            case .accessBlocked(let names):
+                let list = names.joined(separator: ", ")
+                return L.s("macOS 가 ClaudeMonitor 의 \(list) 데이터 접근을 막고 있습니다. 시스템 설정 › 개인정보 보호 및 보안 › 전체 디스크 접근 권한에서 ClaudeMonitor 를 켠 뒤 앱을 다시 실행하세요. (업데이트 후 다시 막히면 목록에서 지웠다가 다시 추가하세요.)",
+                           "macOS is blocking ClaudeMonitor from reading \(list) data. Turn ClaudeMonitor on under System Settings › Privacy & Security › Full Disk Access, then relaunch the app. (If it is blocked again after an update, remove it from that list and add it again.)")
             case .keychainDenied:
                 return L.s("브라우저의 Safe Storage 키체인 접근이 거부되었습니다. 프롬프트에서 ‘허용’을 눌러 주세요.",
                            "Access to the browser’s Safe Storage keychain item was denied. Choose ‘Allow’ in the prompt.")
@@ -95,9 +105,18 @@ enum ChromeCookies {
         var sources: [String] = []
         var sawCookie = false
         var keychainDenied = false
+        var blocked: [String] = []
 
         for browser in browsers {
-            let profiles = profileCookieFiles(in: browser.dir)
+            // 폴더를 못 열면(EPERM) Keychain 도 읽지 않는다 — 쿠키를 못 읽는데 프롬프트만 띄울 이유가 없다.
+            let profiles: [(String, URL)]
+            switch scanProfiles(in: browser.dir) {
+            case .blocked:
+                blocked.append(browser.name)
+                continue
+            case .profiles(let found):
+                profiles = found
+            }
             guard !profiles.isEmpty else { continue }
 
             // Safe Storage 비밀번호는 브라우저당 한 번만 읽는다 (프로필이 여러 개여도 같은 키).
@@ -109,7 +128,14 @@ enum ChromeCookies {
             let aesKey = deriveKey(password: password)
 
             for (profileName, cookieURL) in profiles {
-                let encrypted = readEncryptedSessionKeys(cookieDB: cookieURL)
+                let encrypted: [Data]
+                do {
+                    encrypted = try readEncryptedSessionKeys(cookieDB: cookieURL)
+                } catch {
+                    // 폴더 목록은 보였지만 Cookies 파일 자체가 막힌 경우
+                    if !blocked.contains(browser.name) { blocked.append(browser.name) }
+                    continue
+                }
                 if !encrypted.isEmpty { sawCookie = true }
                 for blob in encrypted {
                     guard let value = decrypt(encryptedValue: blob, key: aesKey),
@@ -123,6 +149,9 @@ enum ChromeCookies {
         }
 
         if keys.isEmpty {
+            // 막힌 브라우저가 있으면 그게 가장 그럴듯한 이유다: 세션은 거기 있는데 못 읽었을 뿐이다.
+            // (예전엔 이 경우가 noCookie 로 떨어져 "로그인돼 있는지 확인하세요"라는 엉뚱한 안내가 나갔다.)
+            if !blocked.isEmpty && !sawCookie { throw ImportError.accessBlocked(blocked) }
             if keychainDenied && !sawCookie { throw ImportError.keychainDenied }
             if sawCookie { throw ImportError.decryptFailed }
             throw ImportError.noCookie
@@ -130,13 +159,57 @@ enum ChromeCookies {
         return Result(sessionKeys: keys, sources: sources)
     }
 
+    // MARK: - 권한
+
+    /// 시스템 설정 › 개인정보 보호 및 보안 › 전체 디스크 접근 권한.
+    static let fullDiskAccessSettingsURL =
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
+
+    /// 파일 접근이 "없어서"가 아니라 "막혀서" 실패했는지. macOS 는 다른 앱의 데이터 폴더
+    /// (`~/Library/Application Support/Google/Chrome` 등)를 앱 단위로 보호하고, 권한이 없는 앱에는
+    /// 파일이 존재해도 EPERM 을 돌려준다(프롬프트 없음). 테스트 대상이라 순수 함수로 둔다.
+    static func isPermissionError(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSCocoaErrorDomain,
+           ns.code == NSFileReadNoPermissionError || ns.code == NSFileWriteNoPermissionError {
+            return true
+        }
+        if ns.domain == NSPOSIXErrorDomain, ns.code == Int(EPERM) || ns.code == Int(EACCES) {
+            return true
+        }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error {
+            return isPermissionError(underlying)
+        }
+        return false
+    }
+
+    /// 쿠키 DB 사본을 만들 수 없을 만큼 접근이 막혔음.
+    struct CookieAccessBlocked: Error {}
+
     // MARK: - 프로필 열거
+
+    enum ProfileScan {
+        case profiles([(String, URL)])
+        /// 폴더는 있지만 macOS 가 목록 조회를 막았다 (EPERM/EACCES)
+        case blocked
+    }
 
     /// 브라우저 디렉터리 아래의 (프로필명, Cookies DB 경로) 목록. Cookies 파일이 실제로 있는 프로필만.
     /// 최신 Chromium 은 `<profile>/Network/Cookies`, 구버전은 `<profile>/Cookies` 를 쓴다 — 둘 다 확인한다.
     static func profileCookieFiles(in browserDir: URL) -> [(String, URL)] {
+        if case .profiles(let found) = scanProfiles(in: browserDir) { return found }
+        return []
+    }
+
+    /// `profileCookieFiles` 와 같되, 접근이 막힌 경우를 "프로필 없음"과 구분한다.
+    static func scanProfiles(in browserDir: URL) -> ProfileScan {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(atPath: browserDir.path) else { return [] }
+        let entries: [String]
+        do {
+            entries = try fm.contentsOfDirectory(atPath: browserDir.path)
+        } catch {
+            return isPermissionError(error) ? .blocked : .profiles([])
+        }
         // "Default" + "Profile N" 만 (System Profile/Guest Profile 등은 제외)
         let profileNames = entries.filter { $0 == "Default" || $0.hasPrefix("Profile ") }.sorted()
         var out: [(String, URL)] = []
@@ -147,7 +220,7 @@ enum ChromeCookies {
                 if fm.fileExists(atPath: url.path) { out.append((name, url)); break }
             }
         }
-        return out
+        return .profiles(out)
     }
 
     // MARK: - Keychain (Safe Storage 마스터 비밀번호)
@@ -177,11 +250,17 @@ enum ChromeCookies {
 
     /// 쿠키 DB 에서 claude.ai 의 `sessionKey` 암호문(encrypted_value)들을 읽는다.
     /// 브라우저 실행 중 파일이 잠길 수 있으므로 임시 사본을 immutable 로 연다.
-    static func readEncryptedSessionKeys(cookieDB: URL) -> [Data] {
+    /// 사본을 만들 수 없을 만큼 접근이 막혔으면 `CookieAccessBlocked` 를 던진다 (그 외 실패는 빈 배열).
+    static func readEncryptedSessionKeys(cookieDB: URL) throws -> [Data] {
         let fm = FileManager.default
         let tmp = fm.temporaryDirectory.appendingPathComponent("ctm-cookies-\(UUID().uuidString).db")
         defer { try? fm.removeItem(at: tmp) }
-        do { try fm.copyItem(at: cookieDB, to: tmp) } catch { return [] }
+        do {
+            try fm.copyItem(at: cookieDB, to: tmp)
+        } catch {
+            if isPermissionError(error) { throw CookieAccessBlocked() }
+            return []
+        }
 
         var db: OpaquePointer?
         // immutable=1: 잠금/저널 없이 순수 읽기. mode=ro 는 안전장치.
